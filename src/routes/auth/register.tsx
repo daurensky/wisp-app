@@ -14,7 +14,7 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { useAuthStore } from '@/store/auth-store'
+import { useAccessTokenStore } from '@/store/auth-store'
 import { useForm } from '@tanstack/react-form'
 import { NavLink } from 'react-router'
 import z from 'zod'
@@ -48,7 +48,7 @@ const formSchema = z.object({
 })
 
 export default function Register() {
-  const { setAccessToken } = useAuthStore()
+  const { setAccessToken } = useAccessTokenStore()
 
   const form = useForm({
     defaultValues: {

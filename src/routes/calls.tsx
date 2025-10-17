@@ -2,38 +2,6 @@ import { configureEcho, useEcho, useEchoPublic } from "@laravel/echo-react";
 import ky from "ky";
 import { useEffect, useRef, useState } from "react";
 
-// const APP_URL = "https://pregnant-speech-humanity-diabetes.trycloudflare.com";
-const APP_URL = "http://localhost";
-const BROADCAST_URL =
-  "interval-democratic-compatibility-marketing.trycloudflare.com";
-
-function diffStrings(a, b) {
-  let diffs = [];
-  let max = Math.max(a.length, b.length);
-
-  for (let i = 0; i < max; i++) {
-    if (a[i] !== b[i]) {
-      diffs.push({ index: i, a: a[i] || "", b: b[i] || "" });
-    }
-  }
-
-  return diffs;
-}
-
-configureEcho({
-  broadcaster: "reverb",
-  key: "uohzyrztajtu1bmmk0oq", // любой ключ, можно фиктивный
-  wsHost: "localhost",
-  wsPort: 8080,
-  forceTLS: false,
-  enabledTransports: ["ws"],
-  authEndpoint: "http://localhost/broadcasting/auth",
-  // wsHost: BROADCAST_URL,
-  // wsPort: 443,
-  // forceTLS: true,
-  // enabledTransports: ["ws", "wss"],
-});
-
 const servers = {
   iceServers: [
     {

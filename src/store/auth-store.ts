@@ -1,12 +1,12 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-interface AuthState {
+interface AccessTokenState {
   accessToken: string
   setAccessToken: (accessToken: string) => void
 }
 
-export const useAuthStore = create<AuthState>()(
+export const useAccessTokenStore = create<AccessTokenState>()(
   persist(
     set => ({
       accessToken: '',

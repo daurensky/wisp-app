@@ -1,4 +1,4 @@
-import { useAuthStore } from '@/store/auth-store'
+import { useAccessTokenStore } from '@/store/auth-store'
 import ky from 'ky'
 
 const api = ky.create({
@@ -6,7 +6,11 @@ const api = ky.create({
   hooks: {
     beforeRequest: [
       request => {
-        const accessToken = useAuthStore.getState().accessToken
+        const accessToken = useAccessTokenStore.getState().accessToken
+
+        if (import.meta.env.DEV) {
+          console.log(accessToken)
+        }
 
         if (accessToken) {
           request.headers.set('Authorization', `Bearer ${accessToken}`)

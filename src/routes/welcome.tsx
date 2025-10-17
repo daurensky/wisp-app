@@ -1,4 +1,3 @@
-import { SiteHeader } from '@/components/site-header'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -12,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TabsContent } from '@radix-ui/react-tabs'
 import { useForm } from '@tanstack/react-form'
+import { NavLink } from 'react-router'
 
 export default function Welcome() {
   const form = useForm({
@@ -20,17 +20,38 @@ export default function Welcome() {
     },
     onSubmit: async ({ value }) => {
       console.log(value)
-    }
+    },
   })
 
   return (
     <>
-      <SiteHeader title="Друзья" />
+      <aside className="bg-sidebar rounded-sm w-[300px]">
+        <ul className="p-3 space-y-4">
+          <li className="space-y-2">
+            <NavLink to="/">
+              {({ isActive }) => (
+                <Button
+                  variant={isActive ? 'secondary' : 'navlink'}
+                  className="w-full justify-start"
+                >
+                  Друзья
+                </Button>
+              )}
+            </NavLink>
+          </li>
+        </ul>
+      </aside>
 
-      <main className="flex flex-col flex-1">
-        <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
+      <main className="flex flex-col flex-1 gap-2">
+        <header className="bg-sidebar flex items-center gap-2 rounded-md">
+          <div className="flex w-full items-center gap-2 px-4 py-2">
+            <h1 className="text-base font-medium">Друзья</h1>
+          </div>
+        </header>
+
+        <div className="flex flex-col gap-4 py-2">
           <Tabs defaultValue="all">
-            <TabsList className="mb-4">
+            <TabsList className="mb-2">
               <TabsTrigger value="all">В сети</TabsTrigger>
               <TabsTrigger value="add">Добавить в друзья</TabsTrigger>
             </TabsList>
