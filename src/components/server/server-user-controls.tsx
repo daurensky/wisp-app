@@ -57,17 +57,19 @@ export function ServerUserControls() {
             <div>
               <div className="hidden">
                 {/* <audio ref={localAudio} autoPlay></audio> */}
-                {Object.entries(remoteStreams.current).map(([id, stream]) => (
-                  <audio
-                    key={id}
-                    ref={el => {
-                      if (el && stream && el.srcObject !== stream) {
-                        el.srcObject = stream
-                      }
-                    }}
-                    autoPlay
-                  ></audio>
-                ))}
+                {Object.entries(remoteStreams.current)
+                  .filter(([id]) => id !== user.id)
+                  .map(([id, stream]) => (
+                    <audio
+                      key={id}
+                      ref={el => {
+                        if (el && stream && el.srcObject !== stream) {
+                          el.srcObject = stream
+                        }
+                      }}
+                      autoPlay
+                    ></audio>
+                  ))}
               </div>
 
               <div className="flex justify-between gap-2">
