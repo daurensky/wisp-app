@@ -1,5 +1,5 @@
-import z from 'zod'
-import { useForm } from '@tanstack/react-form'
+import { login } from '@/api/auth'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -15,8 +15,13 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
+import { useAccessTokenStore } from '@/store/auth-store'
+import { useForm } from '@tanstack/react-form'
+import { useMutation } from '@tanstack/react-query'
+import { HTTPError } from 'ky'
 import { NavLink } from 'react-router'
+import { toast } from 'sonner'
+import z from 'zod'
 
 const formSchema = z.object({
   email: z
@@ -31,6 +36,23 @@ const formSchema = z.object({
 })
 
 export default function Login() {
+  const { setAccessToken } = useAccessTokenStore()
+
+  const mutation = useMutation({
+    mutationFn: login,
+    onSuccess: ({ token }) => {
+      setAccessToken(token)
+    },
+    onError: error => {
+      if (error instanceof HTTPError && error.response.status === 401) {
+        toast('Неверный email или пароль')
+        return
+      }
+
+      toast(error.message)
+    },
+  })
+
   const form = useForm({
     defaultValues: {
       email: '',
@@ -39,9 +61,7 @@ export default function Login() {
     validators: {
       onSubmit: formSchema,
     },
-    onSubmit: async ({ value }) => {
-      console.log(value)
-    },
+    onSubmit: ({ value }) => mutation.mutate(value),
   })
 
   return (

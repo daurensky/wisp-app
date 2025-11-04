@@ -19,6 +19,7 @@ import { useForm } from '@tanstack/react-form'
 import { NavLink } from 'react-router'
 import z from 'zod'
 import { toast } from 'sonner'
+import { useMutation } from '@tanstack/react-query'
 
 const formSchema = z.object({
   email: z
@@ -50,6 +51,16 @@ const formSchema = z.object({
 export default function Register() {
   const { setAccessToken } = useAccessTokenStore()
 
+  const mutation = useMutation({
+    mutationFn: register,
+    onSuccess: ({ token }) => {
+      setAccessToken(token)
+    },
+    onError: error => {
+      toast(error.message)
+    },
+  })
+
   const form = useForm({
     defaultValues: {
       email: '',
@@ -60,14 +71,7 @@ export default function Register() {
     validators: {
       onSubmit: formSchema,
     },
-    onSubmit: async ({ value }) => {
-      try {
-        const { token } = await register(value)
-        setAccessToken(token)
-      } catch (e) {
-        toast('Произошла ошибка')
-      }
-    },
+    onSubmit: ({ value }) => mutation.mutate(value),
   })
 
   return (

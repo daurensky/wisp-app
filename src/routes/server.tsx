@@ -1,11 +1,17 @@
 import { getServer } from '@/api/server'
-import TextChannelButton from '@/components/text-channel-button'
+import { ServerChannel } from '@/api/server-chaannel'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import VoiceChannelButton from '@/components/voice-channel-button'
-import { useQuery } from '@tanstack/react-query'
-import { useParams } from 'react-router'
+import { useWebRTC } from '@/context/webrtc-context'
+import { useEcho, useEchoModel } from '@laravel/echo-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Hash, Volume2 } from 'lucide-react'
+import { useEffect } from 'react'
+import { Outlet, useParams } from 'react-router'
 
 export default function Server() {
+  const queryClient = useQueryClient()
+
   const { id } = useParams() as { id: string }
   const {
     data: server,
@@ -15,6 +21,42 @@ export default function Server() {
     queryKey: ['server', id],
     queryFn: () => getServer(id),
   })
+
+  useEchoModel('App.Models.Server', id, ['ServerUpdated'], data => {
+    queryClient.setQueryData(['server', id], () => data)
+  })
+
+  const echo = useEcho(`server.${id}`)
+
+  const { createOffer, createAnswer, addIceCandidate, setRemoteDescription } =
+    useWebRTC()
+
+  useEffect(() => {
+    const channel = echo.channel()
+
+    const handleOffer = async (offer: RTCSessionDescriptionInit) => {
+      const answer = await createAnswer(offer)
+      channel.whisper('answer', answer)
+    }
+
+    const handleOfferCandidate = async (candidate: RTCIceCandidateInit) => {
+      await addIceCandidate(candidate)
+    }
+
+    const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
+      await setRemoteDescription(answer)
+    }
+
+    channel.listenForWhisper('offer', handleOffer)
+    channel.listenForWhisper('offer-candidate', handleOfferCandidate)
+    channel.listenForWhisper('answer', handleAnswer)
+
+    return () => {
+      channel.stopListeningForWhisper('offer', handleOffer)
+      channel.stopListeningForWhisper('offer-candidate', handleOfferCandidate)
+      channel.stopListeningForWhisper('answer', handleAnswer)
+    }
+  }, [echo, addIceCandidate, createAnswer, setRemoteDescription])
 
   if (status === 'pending') {
     return (
@@ -32,7 +74,7 @@ export default function Server() {
           </ul>
         </aside>
 
-        <main></main>
+        <Outlet />
       </>
     )
   }
@@ -43,6 +85,23 @@ export default function Server() {
         <p>{error.message}</p>
       </>
     )
+  }
+
+  const connect = async ({
+    id: channelId,
+    name,
+  }: Pick<ServerChannel, 'id' | 'name'>) => {
+    const channel = echo.channel()
+
+    const offer = await createOffer({
+      id: `server:${id}:channel:${channelId}:${name} / ${server.name}`,
+      onIceCandidate: candidate => {
+        channel.whisper('offer-candidate', candidate)
+      },
+      video: false,
+    })
+
+    channel.whisper('offer', offer)
   }
 
   return (
@@ -61,11 +120,19 @@ export default function Server() {
                 {channels.map(({ id, name, type }) => (
                   <li key={id}>
                     {type === 'text' && (
-                      <TextChannelButton id={id} name={name} />
+                      <Button variant="navlink" className="w-full">
+                        <Hash /> {name}
+                      </Button>
                     )}
 
                     {type === 'voice' && (
-                      <VoiceChannelButton id={id} name={name} />
+                      <Button
+                        onClick={() => connect({ id, name })}
+                        variant="navlink"
+                        className="w-full"
+                      >
+                        <Volume2 /> {name}
+                      </Button>
                     )}
                   </li>
                 ))}
@@ -75,7 +142,7 @@ export default function Server() {
         </ul>
       </aside>
 
-      <main></main>
+      <Outlet />
     </>
   )
 }

@@ -49,3 +49,24 @@ export async function register({
     })
     .json()
 }
+
+interface BroadcastingResponse {
+  auth: string
+}
+
+export async function authorizeBroadcasting({
+  socketId,
+  channelName,
+}: {
+  socketId: string
+  channelName: string
+}) {
+  return await api
+    .post<BroadcastingResponse>('broadcasting/auth', {
+      json: {
+        socket_id: socketId,
+        channel_name: channelName,
+      },
+    })
+    .json()
+}

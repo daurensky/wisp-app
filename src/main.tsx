@@ -1,16 +1,19 @@
+import { configureEcho } from '@laravel/echo-react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import Welcome from './routes/welcome.tsx'
-import './index.css'
 import { HashRouter, Route, Routes } from 'react-router'
+import { authorizeBroadcasting } from './api/auth.ts'
+import './index.css'
+import AuthLayout from './layouts/auth-layout.tsx'
+import GuestLayout from './layouts/guest-layout.tsx'
+import RootLayout from './layouts/root-layout.tsx'
 import Login from './routes/auth/login.tsx'
 import Register from './routes/auth/register.tsx'
-import RootLayout from './layouts/root-layout.tsx'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import GuestLayout from './layouts/guest-layout.tsx'
-import AuthLayout from './layouts/auth-layout.tsx'
 import Server from './routes/server.tsx'
-import { configureEcho } from '@laravel/echo-react'
+import Welcome from './routes/welcome.tsx'
+import WebRTCLayout from './layouts/webrtc-layout.tsx'
+import ServerLayout from './layouts/server-layout.tsx'
 
 configureEcho({
   broadcaster: 'reverb',
@@ -19,9 +22,21 @@ configureEcho({
   wsPort: import.meta.env.VITE_REVERB_PORT ?? 80,
   wssPort: import.meta.env.VITE_REVERB_PORT ?? 443,
   forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
-  authEndpoint:
-    import.meta.env.VITE_REVERB_AUTH_ENDPOINT ?? '/broadcasting/auth',
   enabledTransports: ['ws', 'wss'],
+  authorizer: channel => ({
+    authorize: async (socketId, callback) => {
+      try {
+        const { auth } = await authorizeBroadcasting({
+          socketId,
+          channelName: channel.name,
+        })
+
+        callback(null, { auth })
+      } catch (error) {
+        callback(error as Error, null)
+      }
+    },
+  }),
 })
 
 const queryClient = new QueryClient()
@@ -38,8 +53,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             </Route>
 
             <Route element={<AuthLayout />}>
-              <Route path="/" element={<Welcome />} />
-              <Route path="server/:id" element={<Server />} />
+              <Route element={<WebRTCLayout />}>
+                <Route element={<ServerLayout />}>
+                  <Route path="/" element={<Welcome />} />
+                  <Route path="server/:id" element={<Server />} />
+                </Route>
+              </Route>
             </Route>
           </Route>
         </Routes>
@@ -49,6 +68,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 )
 
 // Use contextBridge
-window.ipcRenderer.on('main-process-message', (_event, message) => {
-  console.log(message)
-})
+// window.ipcRenderer.on('main-process-message', (_event, message) => {
+//   console.log(message)
+// })

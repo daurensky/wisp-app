@@ -1,13 +1,6 @@
 import api from '@/lib/api'
 import { User } from './user'
-
-export type ServerChannelType = 'voice' | 'text'
-
-export interface ServerChannel {
-  id: string
-  name: string
-  type: ServerChannelType
-}
+import { ServerChannel } from './server-chaannel'
 
 export interface ServerCategory {
   id: string
