@@ -9,7 +9,7 @@ const api = ky.create({
         const accessToken = useAccessTokenStore.getState().accessToken
 
         if (import.meta.env.DEV) {
-          console.log(accessToken)
+          // console.log(accessToken)
         }
 
         if (accessToken) {

@@ -26,12 +26,12 @@ configureEcho({
   authorizer: channel => ({
     authorize: async (socketId, callback) => {
       try {
-        const { auth } = await authorizeBroadcasting({
+        const response = await authorizeBroadcasting({
           socketId,
           channelName: channel.name,
         })
 
-        callback(null, { auth })
+        callback(null, response)
       } catch (error) {
         callback(error as Error, null)
       }

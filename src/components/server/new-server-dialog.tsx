@@ -1,7 +1,7 @@
 import { useForm } from '@tanstack/react-form'
 import { Plus } from 'lucide-react'
 import z from 'zod'
-import { Button } from './ui/button'
+import { Button } from '../ui/button'
 import {
   Dialog,
   DialogClose,
@@ -11,9 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from './ui/dialog'
-import { Field, FieldError, FieldGroup, FieldLabel } from './ui/field'
-import { Input } from './ui/input'
+} from '../ui/dialog'
+import { Field, FieldError, FieldGroup, FieldLabel } from '../ui/field'
+import { Input } from '../ui/input'
 import { createServer, Server } from '@/api/server'
 import { toast } from 'sonner'
 import { useEffect, useState } from 'react'

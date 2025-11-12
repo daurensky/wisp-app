@@ -2,33 +2,62 @@ import { createContext, MutableRefObject, useContext } from 'react'
 
 type UserId = string
 
-interface WebRTCContextValue {
-  currentOfferId: string | null
+export type OnIceCandidate = (candidate: RTCIceCandidateInit) => void
+
+export type Connection = {
+  connectedTo: 'server-channel'
+  connectedId: string
+  connectedLabel: string
+}
+
+export interface WebRTCContextValue {
+  connection: Connection | null
+  initConnection: (connectionDetails: Connection) => void
 
   localStream: MutableRefObject<MediaStream | null>
-  remoteStreams: MutableRefObject<Record<UserId, MediaStream>>
+  peers: Record<UserId, MediaStream>
+
+  initLocalStream: () => Promise<MediaStream>
 
   createOffer: ({
-    id,
+    remoteUserId,
     onIceCandidate,
-    video,
   }: {
-    id: string
-    onIceCandidate: (candidate: RTCIceCandidateInit) => void
-    video: boolean
+    remoteUserId: UserId
+    onIceCandidate: OnIceCandidate
   }) => Promise<RTCSessionDescriptionInit>
 
-  createAnswer: (
-    offer: RTCSessionDescriptionInit
-  ) => Promise<RTCSessionDescriptionInit>
+  handleOffer: ({
+    from,
+    sdp,
+    onIceCandidate,
+  }: {
+    from: UserId
+    sdp: string
+    onIceCandidate: OnIceCandidate
+  }) => Promise<RTCSessionDescriptionInit>
 
-  addIceCandidate: (candidate: RTCIceCandidateInit) => Promise<void>
+  handleAnswer: ({ from, sdp }: { from: string; sdp: string }) => Promise<void>
 
-  setRemoteDescription: (answer: RTCSessionDescriptionInit) => Promise<void>
+  handleCandidate: ({
+    from,
+    candidate,
+  }: {
+    from: UserId
+    candidate: RTCIceCandidateInit
+  }) => Promise<void>
 
-  getPing: () => Promise<number | null>
+  removePeer: ({ remoteUserId }: { remoteUserId: UserId }) => void
 
-  closeConnection: () => Promise<void>
+  validatePeers: ({
+    connectedUserIds,
+  }: {
+    connectedUserIds: Set<UserId>
+  }) => void
+
+  closeAll: () => void
+
+  getPing: ({ userId }: { userId: UserId }) => Promise<number | null>
 }
 
 export const WebRTCContext = createContext<WebRTCContextValue | null>(null)

@@ -1,5 +1,5 @@
-import ServerList from '@/components/server-list'
-import { ServerUserControls } from '@/components/server-user-controls'
+import ServerList from '@/components/server/server-list'
+import { ServerUserControls } from '@/components/server/server-user-controls'
 import { CSSProperties } from 'react'
 import { Outlet } from 'react-router'
 

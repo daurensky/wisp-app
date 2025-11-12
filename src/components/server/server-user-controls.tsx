@@ -5,19 +5,12 @@ import { PhoneOff, ScreenShare, Settings } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/button'
 import { Separator } from '../ui/separator'
+import { disconnectChannel } from '@/api/server-channel'
 
 export function ServerUserControls() {
   const { user } = useAuth()
-  const {
-    currentOfferId,
-    localStream,
-    remoteStreams,
-    getPing,
-    closeConnection,
-  } = useWebRTC()
-
-  // TODO: Refactor
-  const [, , , , offerLabel] = currentOfferId?.split(':') || []
+  const { connection: connectionDetails, localStream, peers, getPing, closeAll } =
+    useWebRTC()
 
   const [ping, setPing] = useState<number | null>(null)
 
@@ -29,47 +22,45 @@ export function ServerUserControls() {
     }
   }, [localStream.current])
 
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null
+  // useEffect(() => {
+  //   let intervalId: NodeJS.Timeout | null = null
 
-    if (currentOfferId) {
-      intervalId = setInterval(async () => {
-        getPing().then(p => setPing(p))
-      }, 2_000)
-    } else if (intervalId) {
-      clearInterval(intervalId)
-    }
+  //   if (currentOfferId) {
+  //     intervalId = setInterval(async () => {
+  //       getPing({ userId: user.id }).then(p => setPing(p))
+  //     }, 2_000)
+  //   } else if (intervalId) {
+  //     clearInterval(intervalId)
+  //   }
 
-    return () => {
-      intervalId && clearInterval(intervalId)
-    }
-  }, [currentOfferId, getPing])
+  //   return () => {
+  //     intervalId && clearInterval(intervalId)
+  //   }
+  // }, [currentOfferId, getPing])
 
   const disconnect = async () => {
-    await closeConnection()
+    if (!connectionDetails) {
+      return
+    }
+
+    if (connectionDetails.connectedTo === 'server-channel') {
+      await disconnectChannel(connectionDetails.connectedId)
+    }
+
+    closeAll()
   }
 
   return (
     <>
       <div className="bg-accent p-4 rounded-3xl grid gap-4">
-        {currentOfferId !== null && (
+        {connectionDetails !== null && (
           <>
             <div>
-              <div className="hidden">
-                {/* <audio ref={localAudio} autoPlay></audio> */}
-                {Object.entries(remoteStreams.current)
-                  .filter(([id]) => id !== user.id)
-                  .map(([id, stream]) => (
-                    <audio
-                      key={id}
-                      ref={el => {
-                        if (el && stream && el.srcObject !== stream) {
-                          el.srcObject = stream
-                        }
-                      }}
-                      autoPlay
-                    ></audio>
-                  ))}
+              <div className="">
+                {/* <video ref={localAudio} autoPlay playsInline></video> */}
+                {Object.entries(peers).map(([id, stream]) => (
+                  <RemoteVideo key={id} stream={stream} />
+                ))}
               </div>
 
               <div className="flex justify-between gap-2">
@@ -82,8 +73,9 @@ export function ServerUserControls() {
                     <p className="text-sm text-green-400">Пинг ~{ping} ms</p>
                   )}
 
-                  {/* TODO: Refactor */}
-                  <p className="text-sm text-muted-foreground">{offerLabel}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {connectionDetails.connectedLabel}
+                  </p>
                 </div>
 
                 <div className="space-x-2">
@@ -120,7 +112,7 @@ export function ServerUserControls() {
           </Avatar>
           <div className="grid flex-1 text-left text-sm leading-tight">
             <span className="truncate font-medium">
-              {user.name || user.username}
+              <span className="font-medium">{user.name || user.username}</span>
             </span>
           </div>
           <Button
@@ -133,5 +125,25 @@ export function ServerUserControls() {
         </div>
       </div>
     </>
+  )
+}
+
+function RemoteVideo({ stream }: { stream: MediaStream }) {
+  const ref = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    if (!ref.current) return
+
+    ref.current.srcObject = stream
+  }, [stream])
+
+  return (
+    <video
+      ref={ref}
+      muted={false}
+      autoPlay
+      playsInline
+      style={{ width: '100%', border: '2px solid #444' }}
+    />
   )
 }

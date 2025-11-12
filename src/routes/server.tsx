@@ -1,12 +1,14 @@
+import type {
+  ServerCategory as ServerCategoryResponse,
+  Server as ServerResponse,
+} from '@/api/server'
 import { getServer } from '@/api/server'
-import { ServerChannel } from '@/api/server-chaannel'
+import VoiceChannel from '@/components/server/voice-channel'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useWebRTC } from '@/context/webrtc-context'
-import { useEcho, useEchoModel } from '@laravel/echo-react'
+import { useEcho } from '@laravel/echo-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Hash, Volume2 } from 'lucide-react'
-import { useEffect } from 'react'
+import { Hash } from 'lucide-react'
 import { Outlet, useParams } from 'react-router'
 
 export default function Server() {
@@ -22,41 +24,23 @@ export default function Server() {
     queryFn: () => getServer(id),
   })
 
-  useEchoModel('App.Models.Server', id, ['ServerUpdated'], data => {
-    queryClient.setQueryData(['server', id], () => data)
+  useEcho<ServerResponse>(`server.${id}`, '.ServerUpdated', data => {
+    queryClient.setQueryData<ServerResponse>(['server', id], () => data)
   })
 
-  const echo = useEcho(`server.${id}`)
-
-  const { createOffer, createAnswer, addIceCandidate, setRemoteDescription } =
-    useWebRTC()
-
-  useEffect(() => {
-    const channel = echo.channel()
-
-    const handleOffer = async (offer: RTCSessionDescriptionInit) => {
-      const answer = await createAnswer(offer)
-      channel.whisper('answer', answer)
+  useEcho<ServerCategoryResponse>(
+    `server.${id}`,
+    '.ServerCategoryCreated',
+    data => {
+      queryClient.setQueryData(
+        ['server', id],
+        (old: ServerResponse): ServerResponse => ({
+          ...old,
+          categories: [...old.categories, data],
+        })
+      )
     }
-
-    const handleOfferCandidate = async (candidate: RTCIceCandidateInit) => {
-      await addIceCandidate(candidate)
-    }
-
-    const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
-      await setRemoteDescription(answer)
-    }
-
-    channel.listenForWhisper('offer', handleOffer)
-    channel.listenForWhisper('offer-candidate', handleOfferCandidate)
-    channel.listenForWhisper('answer', handleAnswer)
-
-    return () => {
-      channel.stopListeningForWhisper('offer', handleOffer)
-      channel.stopListeningForWhisper('offer-candidate', handleOfferCandidate)
-      channel.stopListeningForWhisper('answer', handleAnswer)
-    }
-  }, [echo, addIceCandidate, createAnswer, setRemoteDescription])
+  )
 
   if (status === 'pending') {
     return (
@@ -87,23 +71,6 @@ export default function Server() {
     )
   }
 
-  const connect = async ({
-    id: channelId,
-    name,
-  }: Pick<ServerChannel, 'id' | 'name'>) => {
-    const channel = echo.channel()
-
-    const offer = await createOffer({
-      id: `server:${id}:channel:${channelId}:${name} / ${server.name}`,
-      onIceCandidate: candidate => {
-        channel.whisper('offer-candidate', candidate)
-      },
-      video: false,
-    })
-
-    channel.whisper('offer', offer)
-  }
-
   return (
     <>
       <aside className="bg-sidebar rounded-sm w-[300px]">
@@ -112,27 +79,25 @@ export default function Server() {
         </div>
 
         <ul className="p-3 space-y-4">
-          {server.categories.map(({ id, name, channels }) => (
-            <li key={id} className="space-y-2">
-              <p className="text-xs text-muted-foreground">{name}</p>
+          {server.categories.map(category => (
+            <li key={category.id} className="space-y-2">
+              <p className="text-xs text-muted-foreground">{category.name}</p>
 
               <ul>
-                {channels.map(({ id, name, type }) => (
-                  <li key={id}>
-                    {type === 'text' && (
+                {category.channels.map(channel => (
+                  <li key={channel.id}>
+                    {channel.type === 'text' && (
                       <Button variant="navlink" className="w-full">
-                        <Hash /> {name}
+                        <Hash /> {channel.name}
                       </Button>
                     )}
 
-                    {type === 'voice' && (
-                      <Button
-                        onClick={() => connect({ id, name })}
-                        variant="navlink"
-                        className="w-full"
-                      >
-                        <Volume2 /> {name}
-                      </Button>
+                    {channel.type === 'voice' && (
+                      <VoiceChannel
+                        server={server}
+                        category={category}
+                        channel={channel}
+                      />
                     )}
                   </li>
                 ))}

@@ -1,6 +1,6 @@
 import api from '@/lib/api'
 import { User } from './user'
-import { ServerChannel } from './server-chaannel'
+import { ServerChannel } from './server-channel'
 
 export interface ServerCategory {
   id: string
