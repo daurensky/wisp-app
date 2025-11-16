@@ -1,5 +1,5 @@
 import ServerList from '@/components/server/server-list'
-import { ServerUserControls } from '@/components/server/server-user-controls'
+import { UserMenu } from '@/components/user-menu'
 import { CSSProperties } from 'react'
 import { Outlet } from 'react-router'
 
@@ -15,7 +15,7 @@ export default function ServerLayout() {
           } as CSSProperties
         }
       >
-        <ServerUserControls />
+        <UserMenu />
       </div>
 
       <ServerList />

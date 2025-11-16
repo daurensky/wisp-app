@@ -8,6 +8,12 @@ export type Connection = {
   connectedTo: 'server-channel'
   connectedId: string
   connectedLabel: string
+  connectorId: string
+}
+
+export interface PeerStreams {
+  mainStream: MediaStream | null
+  displayStream: MediaStream | null
 }
 
 export interface WebRTCContextValue {
@@ -15,7 +21,7 @@ export interface WebRTCContextValue {
   initConnection: (connectionDetails: Connection) => void
 
   localStream: MutableRefObject<MediaStream | null>
-  peers: Record<UserId, MediaStream>
+  peers: Record<UserId, PeerStreams>
 
   initLocalStream: () => Promise<MediaStream>
 
@@ -57,7 +63,13 @@ export interface WebRTCContextValue {
 
   closeAll: () => void
 
-  getPing: ({ userId }: { userId: UserId }) => Promise<number | null>
+  getPeersPing: () => Promise<Record<string, number>>
+
+  localDisplayStream: MediaStream | null
+
+  startScreenShare: () => Promise<void>
+
+  stopScreenShare: () => Promise<void>
 }
 
 export const WebRTCContext = createContext<WebRTCContextValue | null>(null)

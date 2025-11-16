@@ -6,9 +6,11 @@ import { getServer } from '@/api/server'
 import VoiceChannel from '@/components/server/voice-channel'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useWebRTC } from '@/context/webrtc-context'
 import { useEcho } from '@laravel/echo-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Hash } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { Outlet, useParams } from 'react-router'
 
 export default function Server() {
@@ -41,6 +43,8 @@ export default function Server() {
       )
     }
   )
+
+  const { peers } = useWebRTC()
 
   if (status === 'pending') {
     return (
@@ -93,11 +97,7 @@ export default function Server() {
                     )}
 
                     {channel.type === 'voice' && (
-                      <VoiceChannel
-                        server={server}
-                        category={category}
-                        channel={channel}
-                      />
+                      <VoiceChannel channel={channel} />
                     )}
                   </li>
                 ))}
@@ -107,7 +107,26 @@ export default function Server() {
         </ul>
       </aside>
 
-      <Outlet />
+      <main>
+        {Object.entries(peers).map(([userId, peerStreams]) => (
+          <div key={userId}>
+            {peerStreams.displayStream && (
+              <RemoteVideo stream={peerStreams.displayStream} />
+            )}
+          </div>
+        ))}
+      </main>
     </>
   )
+}
+
+function RemoteVideo({ stream }: { stream: MediaStream | null }) {
+  const ref = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    if (!ref.current || !stream) return
+    ref.current.srcObject = stream
+  }, [stream])
+
+  return <video ref={ref} autoPlay playsInline />
 }

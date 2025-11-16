@@ -1,6 +1,7 @@
 import {
   Connection,
   OnIceCandidate,
+  PeerStreams,
   WebRTCContext,
   WebRTCContextValue,
 } from '@/context/webrtc-context'
@@ -23,9 +24,14 @@ export default function WebRTCLayout() {
 
   const localStream = useRef<MediaStream | null>(null)
 
-  const [peers, setPeers] = useState<Record<string, MediaStream>>({})
+  const [peers, setPeers] = useState<Record<string, PeerStreams>>({})
 
   const pendingIceCandidates = useRef<Record<string, RTCIceCandidateInit[]>>({})
+
+  const [localDisplayStream, setLocalDescription] =
+    useState<MediaStream | null>(null)
+
+  const displaySenders = useRef<Record<string, RTCRtpSender[]>>({})
 
   const initLocalStream = useCallback(async () => {
     if (localStream.current) {
@@ -34,7 +40,7 @@ export default function WebRTCLayout() {
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
-      video: true,
+      video: false,
     })
 
     localStream.current = stream
@@ -70,10 +76,37 @@ export default function WebRTCLayout() {
       }
 
       pc.ontrack = event => {
-        setPeers(prev => ({
-          ...prev,
-          [remoteUserId]: event.streams[0],
-        }))
+        const remoteStream = event.streams[0]
+        const hasVideoStream = remoteStream.getVideoTracks().length > 0
+        const isDisplayStream = hasVideoStream
+
+        console.log({ isDisplayStream })
+
+        setPeers(prev => {
+          const currentStreams = prev[remoteUserId] || {
+            mainStream: null,
+            displayStream: null,
+          }
+
+          let newStreamData: PeerStreams
+
+          if (isDisplayStream) {
+            newStreamData = {
+              ...currentStreams,
+              displayStream: remoteStream,
+            }
+          } else {
+            newStreamData = {
+              ...currentStreams,
+              mainStream: remoteStream,
+            }
+          }
+
+          return {
+            ...prev,
+            [remoteUserId]: newStreamData,
+          }
+        })
       }
 
       peerConnections.current[remoteUserId] = pc
@@ -231,13 +264,13 @@ export default function WebRTCLayout() {
     stopLocalStream()
   }, [stopLocalStream])
 
-  const getPing = useCallback<WebRTCContextValue['getPing']>(
-    async ({ userId }) => {
-      const pc = peerConnections.current[userId]
+  const getPeersPing = useCallback<
+    WebRTCContextValue['getPeersPing']
+  >(async () => {
+    const ping: Record<string, number> = {}
 
-      if (!pc) {
-        throw new Error('User not connected')
-      }
+    for (const userId in peerConnections.current) {
+      const pc = peerConnections.current[userId]
 
       const stats = await pc.getStats()
 
@@ -249,13 +282,78 @@ export default function WebRTCLayout() {
       })
 
       if (rtt === null) {
-        return null
+        continue
       }
 
-      return Math.round(rtt * 1000)
-    },
-    []
-  )
+      ping[userId] = Math.round(rtt * 1000)
+    }
+
+    return ping
+  }, [])
+
+  const initLocalDisplayStream = useCallback(async () => {
+    if (localDisplayStream) {
+      return localDisplayStream
+    }
+
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: true,
+    })
+
+    setLocalDescription(stream)
+
+    return stream
+  }, [localDisplayStream])
+
+  const stopScreenShare = useCallback<
+    WebRTCContextValue['stopScreenShare']
+  >(async () => {
+    if (!localDisplayStream) return
+
+    localDisplayStream.getTracks().forEach(track => track.stop())
+    setLocalDescription(null)
+
+    Object.entries(peerConnections.current).forEach(
+      async ([remoteUserId, pc]) => {
+        const senders = displaySenders.current[remoteUserId]
+
+        if (!senders) return
+
+        senders.forEach(sender => pc.removeTrack(sender))
+        delete displaySenders.current[remoteUserId]
+
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+      }
+    )
+  }, [localDisplayStream])
+
+  const startScreenShare = useCallback<
+    WebRTCContextValue['startScreenShare']
+  >(async () => {
+    const screenStream = await initLocalDisplayStream()
+
+    Object.entries(peerConnections.current).forEach(
+      async ([remoteUserId, pc]) => {
+        const currentSenders: RTCRtpSender[] = []
+
+        screenStream.getTracks().forEach(track => {
+          const sender = pc.addTrack(track, screenStream)
+          currentSenders.push(sender)
+        })
+
+        displaySenders.current[remoteUserId] = currentSenders
+
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+
+        screenStream.getVideoTracks()[0].onended = () => {
+          stopScreenShare()
+        }
+      }
+    )
+  }, [initLocalDisplayStream, stopScreenShare])
 
   return (
     <WebRTCContext.Provider
@@ -272,7 +370,11 @@ export default function WebRTCLayout() {
         removePeer,
         validatePeers,
         closeAll,
-        getPing,
+        getPeersPing,
+
+        localDisplayStream,
+        startScreenShare,
+        stopScreenShare,
       }}
     >
       <Outlet />

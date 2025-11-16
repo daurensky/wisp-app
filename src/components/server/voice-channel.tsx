@@ -1,18 +1,19 @@
-import { Server, ServerCategory } from '@/api/server'
+import { ServerChannel } from '@/api/server-channel'
 import {
-  connectChannel,
-  getServerChannel,
-  ServerChannel,
-} from '@/api/server-channel'
-import { User } from '@/api/user'
+  createServerChannelMember,
+  getServerChannelMembers,
+  ServerChannelMember,
+} from '@/api/server-channel-member'
 import { useAuth } from '@/context/auth-context'
 import { useWebRTC } from '@/context/webrtc-context'
 import { useEcho } from '@laravel/echo-react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Volume2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
+import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
+import { cn } from '@/lib/utils'
 
 type SignalPayload = {
   type: string
@@ -21,18 +22,64 @@ type SignalPayload = {
   sdp: string
 }
 
-export default function VoiceChannel({
-  server,
-  category,
-  channel,
-}: {
-  server: Server
-  category: ServerCategory
-  channel: ServerChannel
-}) {
+export default function VoiceChannel({ channel }: { channel: ServerChannel }) {
   const queryClient = useQueryClient()
 
   const { user } = useAuth()
+
+  const { data: members, refetch } = useQuery({
+    queryKey: ['server-channel-members', channel.id],
+    queryFn: () => getServerChannelMembers({ server_channel_id: channel.id }),
+    initialData: channel.members,
+    enabled: false,
+  })
+
+  const createMutation = useMutation({
+    mutationKey: ['server-channel-members', channel.id],
+    mutationFn: createServerChannelMember,
+    onMutate: async () => {
+      const queries = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ['server-channel-members'], exact: false })
+
+      queries.forEach(query => {
+        const key = query.queryKey
+        const data = query.state.data
+
+        if (!data) return
+
+        queryClient.setQueryData<ServerChannelMember[]>(key, old =>
+          old ? old.filter(oldMember => oldMember.user.id !== user.id) : old
+        )
+      })
+
+      const member: ServerChannelMember = {
+        id: '',
+        user,
+        server_channel_id: channel.id,
+        is_screen_sharing: false,
+      }
+
+      await queryClient.cancelQueries({
+        queryKey: ['server-channel-members', channel.id],
+      })
+
+      const previousMembers = queryClient.getQueryData<ServerChannelMember[]>([
+        'server-channel-members',
+        channel.id,
+      ])
+
+      queryClient.setQueryData<ServerChannelMember[]>(
+        ['server-channel-members', channel.id],
+        old => (old ? [...old, member] : [member])
+      )
+
+      return { previousTodos: previousMembers }
+    },
+    onError: error => {
+      toast(error.message)
+    },
+  })
 
   const {
     connection,
@@ -53,49 +100,35 @@ export default function VoiceChannel({
     [channel.id, connection]
   )
 
-  useEcho<User[]>(
+  useEcho<ServerChannelMember>(
     `server-channel.${channel.id}`,
-    '.channel.members.updated',
-    members => {
-      console.log(connected)
+    [
+      '.ServerChannelMemberCreated',
+      '.ServerChannelMemberUpdated',
+      '.ServerChannelMemberDeleted',
+    ],
+    async member => {
+      const queries = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ['server-channel-members'], exact: false })
 
-      if (connected) {
-        validatePeers({
-          connectedUserIds: new Set(members.map(({ id }) => id)),
-        })
-      }
+      queries.forEach(query => {
+        const key = query.queryKey
+        const data = query.state.data
 
-      queryClient.setQueryData<Server>(['server', server.id], old => {
-        if (!old) return old
+        if (!data) return
 
-        const categoryIndex = old.categories.findIndex(
-          ({ id }) => id === category.id
+        queryClient.setQueryData<ServerChannelMember[]>(key, old =>
+          old ? old.filter(oldMember => oldMember.id !== member.id) : old
         )
-        if (categoryIndex === -1) return old
+      })
 
-        const channelIndex = old.categories[categoryIndex].channels.findIndex(
-          ({ id }) => id === channel.id
-        )
-        if (channelIndex === -1) return old
+      const { data: members } = await refetch()
 
-        const updatedChannel = {
-          ...old.categories[categoryIndex].channels[channelIndex],
-          members,
-        }
+      if (!members) return
 
-        const updatedCategory = {
-          ...old.categories[categoryIndex],
-          channels: old.categories[categoryIndex].channels.map((ch, i) =>
-            i === channelIndex ? updatedChannel : ch
-          ),
-        }
-
-        return {
-          ...old,
-          categories: old.categories.map((cat, i) =>
-            i === categoryIndex ? updatedCategory : cat
-          ),
-        }
+      validatePeers({
+        connectedUserIds: new Set(members.map(({ user }) => user.id)),
       })
     },
     [connected]
@@ -105,8 +138,6 @@ export default function VoiceChannel({
 
   const handleChannelSignal = useCallback(
     async (payload: SignalPayload) => {
-      console.log('signal!')
-
       if (!connected) return
 
       const echoChannel = echo.channel()
@@ -187,7 +218,9 @@ export default function VoiceChannel({
   const connect = useCallback(async () => {
     const echoChannel = echo.channel()
 
-    await connectChannel(channel.id)
+    const member = await createMutation.mutateAsync({
+      server_channel_id: channel.id,
+    })
 
     await initLocalStream()
 
@@ -195,20 +228,18 @@ export default function VoiceChannel({
       connectedTo: 'server-channel',
       connectedId: channel.id,
       connectedLabel: channel.name,
+      connectorId: member.id,
     })
 
-    // TODO: Refactor
-    const { members } = await getServerChannel(channel.id)
-
     for (const member of members) {
-      if (member.id === user.id) continue
+      if (member.user.id === user.id) continue
 
       const offer = await createOffer({
-        remoteUserId: member.id,
+        remoteUserId: member.user.id,
         onIceCandidate: candidate =>
           echoChannel.whisper('.channel.candidate', {
             from: user.id,
-            to: member.id,
+            to: member.user.id,
             candidate,
           }),
       })
@@ -221,29 +252,53 @@ export default function VoiceChannel({
       echoChannel.whisper('.channel.signal', {
         type: 'offer',
         from: user.id,
-        to: member.id,
+        to: member.user.id,
         sdp: offer.sdp,
       } as SignalPayload)
     }
   }, [
     channel.id,
     channel.name,
+    createMutation,
     createOffer,
     echo,
     initConnection,
     initLocalStream,
+    members,
     user.id,
   ])
 
   return (
     <>
       <Button onClick={connect} variant="navlink" className="w-full">
-        <Volume2 /> {channel.name}
+        <Volume2 />
+        {channel.name}
       </Button>
 
-      {channel.members.map(({ id, name }) => (
-        <p key={id}>{name}</p>
-      ))}
+      <ul>
+        {members.map(member => (
+          <li
+            key={member.user.id}
+            className={cn('flex', member.id === '' && 'opacity-50')}
+          >
+            <Button variant="navlink" className="grow ml-4">
+              <img
+                src={member.user.avatar}
+                alt=""
+                className="w-6 h-6 rounded-full"
+              />
+
+              <span className="truncate">{member.user.name}</span>
+
+              {member.is_screen_sharing && (
+                <Badge variant="destructive" className="ml-auto uppercase">
+                  В эфире
+                </Badge>
+              )}
+            </Button>
+          </li>
+        ))}
+      </ul>
     </>
   )
 }
