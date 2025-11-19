@@ -1,12 +1,13 @@
 import { listServers } from '@/api/server'
+import logo from '@/assets/logo.png'
 import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { NavLink } from 'react-router'
-import NewServerDialog from './new-server-dialog'
+import { toast } from 'sonner'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
 import { Skeleton } from '../ui/skeleton'
-import { useEffect } from 'react'
-import { toast } from 'sonner'
+import NewServerDialog from './new-server-dialog'
 
 export default function ServerList() {
   const {
@@ -26,7 +27,7 @@ export default function ServerList() {
           <div className="px-3">
             <NavLink to="/">
               <Avatar className="h-10 w-10 rounded-lg">
-                <AvatarImage src="/logo.png" alt="Wisp" />
+                <AvatarImage src={logo} alt="Wisp" />
               </Avatar>
             </NavLink>
           </div>
@@ -45,7 +46,7 @@ export default function ServerList() {
         <div className="px-3">
           <NavLink to="/">
             <Avatar className="h-10 w-10 rounded-lg">
-              <AvatarImage src="/logo.png" alt="Wisp" />
+              <AvatarImage src={logo} alt="Wisp" />
             </Avatar>
           </NavLink>
         </div>
