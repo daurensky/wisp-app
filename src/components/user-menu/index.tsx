@@ -1,18 +1,20 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useAuth } from '@/context/auth-context'
-import { useWebRTC } from '@/context/webrtc-context'
+import { useConnection } from '@/context/connection-context'
 import { Settings } from 'lucide-react'
 import { Button } from '../ui/button'
 import ConnectionControls from './connection-controls'
 
 export function UserMenu() {
   const { user } = useAuth()
-  const { connection } = useWebRTC()
+  const connection = useConnection()
 
   return (
     <>
       <div className="bg-accent p-4 rounded-3xl grid gap-4">
-        {connection !== null && <ConnectionControls connection={connection} />}
+        {connection.info !== null && (
+          <ConnectionControls connectionInfo={connection.info} />
+        )}
 
         <div className="flex items-center gap-2">
           <Avatar className="h-10 w-10 rounded-full">

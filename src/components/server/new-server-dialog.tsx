@@ -73,7 +73,7 @@ export default function NewServerDialog() {
       form.reset()
       mutation.reset()
     }
-  }, [isOpen, form, mutation])
+  }, [isOpen])
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>

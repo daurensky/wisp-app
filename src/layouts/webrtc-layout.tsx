@@ -1,5 +1,4 @@
 import {
-  Connection,
   OnIceCandidate,
   PeerStreams,
   WebRTCContext,
@@ -18,8 +17,6 @@ const servers = {
 }
 
 export default function WebRTCLayout() {
-  const [connection, setConnection] = useState<Connection | null>(null)
-
   const peerConnections = useRef<Record<string, RTCPeerConnection>>({})
 
   const localStream = useRef<MediaStream | null>(null)
@@ -79,8 +76,6 @@ export default function WebRTCLayout() {
         const remoteStream = event.streams[0]
         const hasVideoStream = remoteStream.getVideoTracks().length > 0
         const isDisplayStream = hasVideoStream
-
-        console.log({ isDisplayStream })
 
         setPeers(prev => {
           const currentStreams = prev[remoteUserId] || {
@@ -260,7 +255,6 @@ export default function WebRTCLayout() {
     peerConnections.current = {}
     setPeers({})
 
-    setConnection(null)
     stopLocalStream()
   }, [stopLocalStream])
 
@@ -306,60 +300,66 @@ export default function WebRTCLayout() {
     return stream
   }, [localDisplayStream])
 
-  const stopScreenShare = useCallback<
-    WebRTCContextValue['stopScreenShare']
-  >(async () => {
-    if (!localDisplayStream) return
-
-    localDisplayStream.getTracks().forEach(track => track.stop())
-    setLocalDescription(null)
-
-    Object.entries(peerConnections.current).forEach(
-      async ([remoteUserId, pc]) => {
-        const senders = displaySenders.current[remoteUserId]
-
-        if (!senders) return
-
-        senders.forEach(sender => pc.removeTrack(sender))
-        delete displaySenders.current[remoteUserId]
-
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-      }
-    )
-  }, [localDisplayStream])
-
   const startScreenShare = useCallback<
     WebRTCContextValue['startScreenShare']
   >(async () => {
     const screenStream = await initLocalDisplayStream()
 
-    Object.entries(peerConnections.current).forEach(
-      async ([remoteUserId, pc]) => {
-        const currentSenders: RTCRtpSender[] = []
+    const offers: Record<string, RTCSessionDescriptionInit> = {}
 
-        screenStream.getTracks().forEach(track => {
-          const sender = pc.addTrack(track, screenStream)
-          currentSenders.push(sender)
-        })
+    for (const [remoteUserId, pc] of Object.entries(peerConnections.current)) {
+      const currentSenders: RTCRtpSender[] = []
 
-        displaySenders.current[remoteUserId] = currentSenders
+      screenStream.getTracks().forEach(track => {
+        const sender = pc.addTrack(track, screenStream)
+        currentSenders.push(sender)
+      })
 
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
+      displaySenders.current[remoteUserId] = currentSenders
 
-        screenStream.getVideoTracks()[0].onended = () => {
-          stopScreenShare()
-        }
-      }
-    )
-  }, [initLocalDisplayStream, stopScreenShare])
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+
+      offers[remoteUserId] = offer
+
+      // screenStream.getVideoTracks()[0].onended = () => {
+      //   stopScreenShare()
+      // }
+    }
+
+    return offers
+  }, [initLocalDisplayStream])
+
+  const stopScreenShare = useCallback<
+    WebRTCContextValue['stopScreenShare']
+  >(async () => {
+    if (!localDisplayStream) return {}
+
+    localDisplayStream.getTracks().forEach(track => track.stop())
+    setLocalDescription(null)
+
+    const offers: Record<string, RTCSessionDescriptionInit> = {}
+
+    for (const [remoteUserId, pc] of Object.entries(peerConnections.current)) {
+      const senders = displaySenders.current[remoteUserId]
+
+      if (!senders) continue
+
+      senders.forEach(sender => pc.removeTrack(sender))
+      delete displaySenders.current[remoteUserId]
+
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+
+      offers[remoteUserId] = offer
+    }
+
+    return offers
+  }, [localDisplayStream])
 
   return (
     <WebRTCContext.Provider
       value={{
-        connection,
-        initConnection: setConnection,
         localStream,
         peers,
         initLocalStream,

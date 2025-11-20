@@ -128,5 +128,5 @@ function RemoteVideo({ stream }: { stream: MediaStream | null }) {
     ref.current.srcObject = stream
   }, [stream])
 
-  return <video ref={ref} autoPlay playsInline />
+  return <video ref={ref} autoPlay playsInline muted />
 }

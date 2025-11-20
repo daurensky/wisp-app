@@ -1,6 +1,6 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, session } from 'electron'
-import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const state: {
   screenShareSourceId: string | null
@@ -8,9 +8,12 @@ const state: {
   screenShareSourceId: null,
 }
 
-ipcMain.handle('set-desktop-capturer-source', (_, screenShareSourceId: string) => {
-  state.screenShareSourceId = screenShareSourceId
-})
+ipcMain.handle(
+  'set-desktop-capturer-source',
+  (_, screenShareSourceId: string) => {
+    state.screenShareSourceId = screenShareSourceId
+  }
+)
 
 ipcMain.handle('get-desktop-capturers', async () => {
   const sources = await desktopCapturer.getSources({
@@ -56,22 +59,8 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 let win: BrowserWindow | null
 
-function createWindow() {
-  win = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC, 'logo.png'),
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
-    },
-    width: 1920,
-    height: 1080,
-  })
-
-  // Test active push message to Renderer-process.
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', new Date().toLocaleString())
-  })
-
-  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+function addDisplayMediaRequestHandler() {
+  session.defaultSession.setDisplayMediaRequestHandler((_, callback) => {
     desktopCapturer
       .getSources({ types: ['screen', 'window'] })
       .then(sources => {
@@ -85,6 +74,22 @@ function createWindow() {
 
         callback({ video: source, audio: 'loopback' })
       })
+  })
+}
+
+function createWindow() {
+  win = new BrowserWindow({
+    icon: path.join(process.env.VITE_PUBLIC, 'logo.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.mjs'),
+    },
+    width: 1920,
+    height: 1080,
+  })
+
+  // Test active push message to Renderer-process.
+  win.webContents.on('did-finish-load', () => {
+    win?.webContents.send('main-process-message', new Date().toLocaleString())
   })
 
   if (VITE_DEV_SERVER_URL) {
@@ -113,4 +118,7 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(createWindow)
+app.whenReady().then(async () => {
+  addDisplayMediaRequestHandler()
+  createWindow()
+})

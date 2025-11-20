@@ -1,19 +1,22 @@
 import { ServerChannel } from '@/api/server-channel'
 import {
-  createServerChannelMember,
+  connectServerChannelMember,
+  deleteServerChannelMember,
   getServerChannelMembers,
   ServerChannelMember,
+  updateServerChannelMember,
 } from '@/api/server-channel-member'
 import { useAuth } from '@/context/auth-context'
+import { useConnection } from '@/context/connection-context'
 import { useWebRTC } from '@/context/webrtc-context'
+import { cn } from '@/lib/utils'
 import { useEcho } from '@laravel/echo-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Volume2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
-import { cn } from '@/lib/utils'
 
 type SignalPayload = {
   type: string
@@ -34,9 +37,9 @@ export default function VoiceChannel({ channel }: { channel: ServerChannel }) {
     enabled: false,
   })
 
-  const createMutation = useMutation({
+  const connectMutation = useMutation({
     mutationKey: ['server-channel-members', channel.id],
-    mutationFn: createServerChannelMember,
+    mutationFn: connectServerChannelMember,
     onMutate: async () => {
       const queries = queryClient
         .getQueryCache()
@@ -74,31 +77,89 @@ export default function VoiceChannel({ channel }: { channel: ServerChannel }) {
         old => (old ? [...old, member] : [member])
       )
 
-      return { previousTodos: previousMembers }
+      return { previousMembers }
     },
-    onError: error => {
+    onError: (error, _, context) => {
+      if (context?.previousMembers) {
+        queryClient.setQueryData(
+          ['server-channel-members', channel.id],
+          context.previousMembers
+        )
+      }
       toast(error.message)
     },
   })
 
-  const {
-    connection,
-    initConnection,
-    initLocalStream,
-    createOffer,
-    handleOffer,
-    handleAnswer,
-    handleCandidate,
-    validatePeers,
-  } = useWebRTC()
+  const deleteMutation = useMutation({
+    mutationKey: ['server-channel-members', channel.id],
+    mutationFn: deleteServerChannelMember,
+    onMutate: async memberId => {
+      await queryClient.cancelQueries({
+        queryKey: ['server-channel-members', channel.id],
+      })
 
-  const connected = useMemo(
-    () =>
-      connection &&
-      connection.connectedTo === 'server-channel' &&
-      connection.connectedId === channel.id,
-    [channel.id, connection]
-  )
+      const previousMembers = queryClient.getQueryData<ServerChannelMember[]>([
+        'server-channel-members',
+        channel.id,
+      ])
+
+      queryClient.setQueryData<ServerChannelMember[]>(
+        ['server-channel-members', channel.id],
+        old => (old ? old.filter(member => member.id !== memberId) : [])
+      )
+
+      return { previousMembers }
+    },
+    onError: (error, _, context) => {
+      if (context?.previousMembers) {
+        queryClient.setQueryData(
+          ['server-channel-members', channel.id],
+          context.previousMembers
+        )
+      }
+      toast(error.message)
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationKey: ['server-channel-members', channel.id],
+    mutationFn: updateServerChannelMember,
+    onMutate: async ({ memberId, json }) => {
+      await queryClient.cancelQueries({
+        queryKey: ['server-channel-members', channel.id],
+      })
+
+      const previousMembers = queryClient.getQueryData<ServerChannelMember[]>([
+        'server-channel-members',
+        channel.id,
+      ])
+
+      queryClient.setQueryData<ServerChannelMember[]>(
+        ['server-channel-members', channel.id],
+        old =>
+          old
+            ? old.flatMap(member =>
+                member.id === memberId ? [{ ...member, ...json }] : [member]
+              )
+            : old
+      )
+
+      return { previousMembers }
+    },
+    onError: (error, _, context) => {
+      if (context?.previousMembers) {
+        queryClient.setQueryData(
+          ['server-channel-members', channel.id],
+          context.previousMembers
+        )
+      }
+      toast(error.message)
+    },
+  })
+
+  const webRTC = useWebRTC()
+
+  const connection = useConnection()
 
   useEcho<ServerChannelMember>(
     `server-channel.${channel.id}`,
@@ -127,23 +188,23 @@ export default function VoiceChannel({ channel }: { channel: ServerChannel }) {
 
       if (!members) return
 
-      validatePeers({
+      webRTC.validatePeers({
         connectedUserIds: new Set(members.map(({ user }) => user.id)),
       })
     },
-    [connected]
+    []
   )
 
   const echo = useEcho(`server-channel.${channel.id}`)
 
   const handleChannelSignal = useCallback(
     async (payload: SignalPayload) => {
-      if (!connected) return
-
       const echoChannel = echo.channel()
 
+      console.log(payload)
+
       if (payload.type === 'offer' && payload.to === user.id) {
-        const answer = await handleOffer({
+        const answer = await webRTC.handleOffer({
           from: payload.from,
           sdp: payload.sdp,
           onIceCandidate: candidate =>
@@ -170,12 +231,12 @@ export default function VoiceChannel({ channel }: { channel: ServerChannel }) {
       }
 
       if (payload.type === 'answer' && payload.to === user.id) {
-        await handleAnswer({ from: payload.from, sdp: payload.sdp })
+        await webRTC.handleAnswer({ from: payload.from, sdp: payload.sdp })
 
         return
       }
     },
-    [connected, echo, handleAnswer, handleOffer, user.id]
+    [echo, user.id, webRTC]
   )
 
   const handleChannelCandidate = useCallback(
@@ -188,22 +249,23 @@ export default function VoiceChannel({ channel }: { channel: ServerChannel }) {
       from: string
       candidate: RTCIceCandidateInit
     }) => {
-      if (!connected) return
-
       if (to !== user.id) return
 
-      await handleCandidate({ from, candidate })
+      await webRTC.handleCandidate({ from, candidate })
     },
-    [connected, handleCandidate, user.id]
+    [user.id, webRTC]
   )
 
-  useEffect(() => {
-    const echoChannel = echo.channel()
+  const disconnect = useCallback(
+    async (memberId: string) => {
+      const echoChannel = echo.channel()
 
-    echoChannel.listenForWhisper('.channel.signal', handleChannelSignal)
-    echoChannel.listenForWhisper('.channel.candidate', handleChannelCandidate)
+      await deleteMutation.mutateAsync(memberId)
 
-    return () => {
+      webRTC.closeAll()
+
+      connection.reset()
+
       echoChannel.stopListeningForWhisper(
         '.channel.signal',
         handleChannelSignal
@@ -212,29 +274,90 @@ export default function VoiceChannel({ channel }: { channel: ServerChannel }) {
         '.channel.candidate',
         handleChannelCandidate
       )
-    }
-  }, [echo, handleChannelCandidate, handleChannelSignal])
+    },
+    [
+      connection,
+      deleteMutation,
+      echo,
+      handleChannelCandidate,
+      handleChannelSignal,
+      webRTC,
+    ]
+  )
+
+  const startScreenShare = useCallback(
+    async (memberId: string) => {
+      console.log('qwe')
+
+      const echoChannel = echo.channel()
+
+      const offers = await webRTC.startScreenShare()
+
+      for (const [remoteUserId, offer] of Object.entries(offers)) {
+        if (!offer.sdp) {
+          console.warn('Offer sdp not set')
+          continue
+        }
+
+        echoChannel.whisper('.channel.signal', {
+          type: 'offer',
+          from: user.id,
+          to: remoteUserId,
+          sdp: offer.sdp,
+        } as SignalPayload)
+      }
+
+      await updateMutation.mutateAsync({
+        memberId,
+        json: { is_screen_sharing: true },
+      })
+    },
+    [echo, updateMutation, user.id, webRTC]
+  )
+
+  const stopScreenShare = useCallback(
+    async (memberId: string) => {
+      const echoChannel = echo.channel()
+
+      const offers = await webRTC.stopScreenShare()
+
+      for (const [remoteUserId, offer] of Object.entries(offers)) {
+        if (!offer.sdp) {
+          console.warn('Offer sdp not set')
+          continue
+        }
+
+        echoChannel.whisper('.channel.signal', {
+          type: 'offer',
+          from: user.id,
+          to: remoteUserId,
+          sdp: offer.sdp,
+        } as SignalPayload)
+      }
+
+      await updateMutation.mutateAsync({
+        memberId,
+        json: { is_screen_sharing: false },
+      })
+    },
+    [echo, updateMutation, user.id, webRTC]
+  )
 
   const connect = useCallback(async () => {
     const echoChannel = echo.channel()
 
-    const member = await createMutation.mutateAsync({
+    const member = await connectMutation.mutateAsync({
       server_channel_id: channel.id,
     })
 
-    await initLocalStream()
+    await webRTC.initLocalStream()
 
-    initConnection({
-      connectedTo: 'server-channel',
-      connectedId: channel.id,
-      connectedLabel: channel.name,
-      connectorId: member.id,
-    })
+    const memberNameMap: Record<string, string | null> = {}
 
     for (const member of members) {
-      if (member.user.id === user.id) continue
+      if (member.user.id === user.id) return
 
-      const offer = await createOffer({
+      const offer = await webRTC.createOffer({
         remoteUserId: member.user.id,
         onIceCandidate: candidate =>
           echoChannel.whisper('.channel.candidate', {
@@ -246,7 +369,7 @@ export default function VoiceChannel({ channel }: { channel: ServerChannel }) {
 
       if (!offer.sdp) {
         toast('WebRTC offer error')
-        return
+        continue
       }
 
       echoChannel.whisper('.channel.signal', {
@@ -255,17 +378,36 @@ export default function VoiceChannel({ channel }: { channel: ServerChannel }) {
         to: member.user.id,
         sdp: offer.sdp,
       } as SignalPayload)
+
+      memberNameMap[member.id] = member.user.name
     }
+
+    connection.init({
+      id: channel.id,
+      connectable: 'server-channel',
+      label: channel.name,
+      memberNameMap,
+      disconnect: () => disconnect(member.id),
+      startScreenShare: () => startScreenShare(member.id),
+      stopScreenShare: () => stopScreenShare(member.id),
+    })
+
+    echoChannel.listenForWhisper('.channel.signal', handleChannelSignal)
+    echoChannel.listenForWhisper('.channel.candidate', handleChannelCandidate)
   }, [
     channel.id,
     channel.name,
-    createMutation,
-    createOffer,
+    connection,
+    connectMutation,
+    disconnect,
     echo,
-    initConnection,
-    initLocalStream,
+    handleChannelCandidate,
+    handleChannelSignal,
     members,
+    startScreenShare,
+    stopScreenShare,
     user.id,
+    webRTC,
   ])
 
   return (

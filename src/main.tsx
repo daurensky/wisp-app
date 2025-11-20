@@ -6,14 +6,15 @@ import { HashRouter, Route, Routes } from 'react-router'
 import { authorizeBroadcasting } from './api/auth.ts'
 import './index.css'
 import AuthLayout from './layouts/auth-layout.tsx'
+import ConnectionLayout from './layouts/connection-layout.tsx'
 import GuestLayout from './layouts/guest-layout.tsx'
 import RootLayout from './layouts/root-layout.tsx'
+import ServerLayout from './layouts/server-layout.tsx'
+import WebRTCLayout from './layouts/webrtc-layout.tsx'
 import Login from './routes/auth/login.tsx'
 import Register from './routes/auth/register.tsx'
 import Server from './routes/server.tsx'
 import Welcome from './routes/welcome.tsx'
-import WebRTCLayout from './layouts/webrtc-layout.tsx'
-import ServerLayout from './layouts/server-layout.tsx'
 
 configureEcho({
   broadcaster: 'reverb',
@@ -53,10 +54,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             </Route>
 
             <Route element={<AuthLayout />}>
-              <Route element={<WebRTCLayout />}>
-                <Route element={<ServerLayout />}>
-                  <Route path="/" element={<Welcome />} />
-                  <Route path="server/:id" element={<Server />} />
+              <Route element={<ConnectionLayout />}>
+                <Route element={<WebRTCLayout />}>
+                  <Route element={<ServerLayout />}>
+                    <Route path="/" element={<Welcome />} />
+                    <Route path="server/:id" element={<Server />} />
+                  </Route>
                 </Route>
               </Route>
             </Route>
