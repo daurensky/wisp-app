@@ -22,3 +22,9 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   // You can expose other APTs you need here.
   // ...
 })
+
+contextBridge.exposeInMainWorld('electronApi', {
+  getDesktopCapturers: () => ipcRenderer.invoke('get-desktop-capturers'),
+  setDesktopCapturerSource: (screenShareSourceId: string) =>
+    ipcRenderer.invoke('set-desktop-capturer-source', screenShareSourceId),
+})

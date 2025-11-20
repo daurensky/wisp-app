@@ -1,6 +1,36 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, desktopCapturer, ipcMain, session } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+
+const state: {
+  screenShareSourceId: string | null
+} = {
+  screenShareSourceId: null,
+}
+
+ipcMain.handle('set-desktop-capturer-source', (_, screenShareSourceId: string) => {
+  state.screenShareSourceId = screenShareSourceId
+})
+
+ipcMain.handle('get-desktop-capturers', async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ['window', 'screen'],
+    thumbnailSize: { width: 1280, height: 720 },
+  })
+
+  const sorted = sources
+    .map(source => ({
+      id: source.id,
+      name: source.name,
+      thumbnail: source.thumbnail.toDataURL(),
+    }))
+    .sort((a, b) => (a.name > b.name ? 1 : -1))
+
+  return {
+    window: sorted.filter(({ id }) => id.startsWith('window:')),
+    screen: sorted.filter(({ id }) => id.startsWith('screen:')),
+  }
+})
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -39,6 +69,22 @@ function createWindow() {
   // Test active push message to Renderer-process.
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', new Date().toLocaleString())
+  })
+
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    desktopCapturer
+      .getSources({ types: ['screen', 'window'] })
+      .then(sources => {
+        const source = sources.find(
+          ({ id }) => id === state.screenShareSourceId
+        )
+
+        if (!source) {
+          throw new Error(`Source not found: ${state.screenShareSourceId}`)
+        }
+
+        callback({ video: source, audio: 'loopback' })
+      })
   })
 
   if (VITE_DEV_SERVER_URL) {

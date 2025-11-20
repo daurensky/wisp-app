@@ -4,23 +4,30 @@ import {
 } from '@/api/server-channel-member'
 import { useAuth } from '@/context/auth-context'
 import { Connection, useWebRTC } from '@/context/webrtc-context'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PhoneOff, ScreenShare, ScreenShareOff } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '../ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
+import { Skeleton } from '../ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 
 export default function ConnectionControls({
   connection,
 }: {
   connection: Connection
 }) {
-  const {
-    peers,
-    closeAll,
-    localDisplayStream,
-    startScreenShare,
-    stopScreenShare,
-  } = useWebRTC()
+  const { peers, closeAll, localDisplayStream } = useWebRTC()
 
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -31,22 +38,6 @@ export default function ConnectionControls({
       videoRef.current.srcObject = localDisplayStream
     }
   }, [localDisplayStream])
-
-  const handleShare = useCallback(async () => {
-    isSharing ? await stopScreenShare() : await startScreenShare()
-
-    if (connection.connectedTo === 'server-channel') {
-      await updateServerChannelMember(connection.connectorId, {
-        is_screen_sharing: !isSharing,
-      })
-    }
-  }, [
-    connection.connectedTo,
-    connection.connectorId,
-    isSharing,
-    startScreenShare,
-    stopScreenShare,
-  ])
 
   const handleDisconnect = useCallback(async () => {
     if (connection.connectedTo === 'server-channel') {
@@ -86,15 +77,7 @@ export default function ConnectionControls({
         </div>
 
         <div className="space-x-2">
-          <Button
-            variant={isSharing ? 'destructive' : 'default'}
-            onClick={handleShare}
-            size="icon-lg"
-            aria-label="Демонстрация экрана"
-            className="rounded-full"
-          >
-            {isSharing ? <ScreenShareOff /> : <ScreenShare />}
-          </Button>
+          <ScreenShareButton connection={connection} />
           <Button
             onClick={handleDisconnect}
             size="icon-lg"
@@ -106,6 +89,159 @@ export default function ConnectionControls({
         </div>
       </div>
     </div>
+  )
+}
+
+function ScreenShareButton({ connection }: { connection: Connection }) {
+  const queryClient = useQueryClient()
+
+  const { localDisplayStream, startScreenShare, stopScreenShare } = useWebRTC()
+
+  const {
+    data: sources,
+    status,
+    refetch,
+  } = useQuery({
+    queryKey: ['desktop-captures'],
+    queryFn: window.electronApi.getDesktopCapturers,
+    enabled: false,
+  })
+
+  const isSharing = useMemo(() => !!localDisplayStream, [localDisplayStream])
+
+  const tabs = useMemo(
+    () => ({
+      window: 'Окно',
+      screen: 'Экран',
+    }),
+    []
+  )
+
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!selectedSourceId) return
+
+    const handleScreenShare = async () => {
+      try {
+        await window.electronApi.setDesktopCapturerSource(selectedSourceId)
+
+        await startScreenShare()
+
+        if (connection.connectedTo === 'server-channel') {
+          await updateServerChannelMember(connection.connectorId, {
+            is_screen_sharing: !isSharing,
+          })
+        }
+      } catch (e) {
+        console.error(e)
+        toast('Не удалось запустить демонстрацию')
+      }
+    }
+
+    handleScreenShare()
+
+    return () => {
+      stopScreenShare()
+    }
+  }, [
+    connection.connectedTo,
+    connection.connectorId,
+    isSharing,
+    selectedSourceId,
+    startScreenShare,
+    stopScreenShare,
+  ])
+
+  useEffect(() => {
+    status === 'error' && toast('Не удалось получить окна для демонстрации')
+  }, [status])
+
+  const handleOpenChange = useCallback(
+    async (open: boolean) => {
+      if (open) {
+        queryClient.resetQueries({ queryKey: ['desktop-captures'] })
+        await refetch()
+      }
+    },
+    [queryClient, refetch]
+  )
+
+  return (
+    <Dialog onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button
+          variant={isSharing ? 'destructive' : 'default'}
+          size="icon-lg"
+          aria-label="Демонстрация экрана"
+          className="rounded-full"
+        >
+          {isSharing ? <ScreenShareOff /> : <ScreenShare />}
+        </Button>
+      </DialogTrigger>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-screen-lg! max-h-2/3 h-full flex flex-col"
+      >
+        <DialogHeader>
+          <DialogTitle>Выберите окно</DialogTitle>
+          <DialogDescription>
+            Выберите окно, которое собираетесь показать
+          </DialogDescription>
+        </DialogHeader>
+
+        <Tabs defaultValue="window" className="h-full min-h-0 gap-4">
+          <TabsList className="w-full">
+            {Object.entries(tabs).map(([tabName, tabLabel]) => (
+              <TabsTrigger key={tabName} value={tabName}>
+                {tabLabel}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {Object.entries(tabs).map(([tabName]) => (
+            <TabsContent
+              key={tabName}
+              value={tabName}
+              className="overflow-y-auto scrollbar-thin scrollbar-thumb-accent-foreground scrollbar-track-accent"
+            >
+              <div className="grid grid-cols-2 gap-4 items-start">
+                {status === 'success' ? (
+                  <>
+                    {sources[tabName as keyof typeof tabs].map(source => (
+                      <div key={source.id} className="space-y-1">
+                        <DialogClose asChild>
+                          <button
+                            onClick={() => setSelectedSourceId(source.id)}
+                            className="scale-95 hover:scale-100 transition-transform cursor-pointer"
+                          >
+                            <div className="w-full aspect-video rounded-lg overflow-hidden">
+                              <img
+                                src={source.thumbnail}
+                                alt=""
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                          </button>
+                        </DialogClose>
+                        <p className="text-sm text-center truncate">
+                          {source.name}
+                        </p>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-[195px] w-full" />
+                    ))}
+                  </>
+                )}
+              </div>
+            </TabsContent>
+          ))}
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   )
 }
 

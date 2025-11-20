@@ -24,4 +24,17 @@ declare namespace NodeJS {
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   ipcRenderer: import('electron').IpcRenderer
+  electronApi: {
+    getDesktopCapturers: () => Promise<{
+      window: DesktopSource[]
+      screen: DesktopSource[]
+    }>
+    setDesktopCapturerSource: (screenShareSourceId: string) => Promise<void>
+  }
+}
+
+interface DesktopSource {
+  id: string
+  name: string
+  thumbnail: string
 }

@@ -1,32 +1,77 @@
-import { app as n, BrowserWindow as s } from "electron";
-import { fileURLToPath as a } from "node:url";
-import o from "node:path";
-const t = o.dirname(a(import.meta.url));
-process.env.APP_ROOT = o.join(t, "..");
-const i = process.env.VITE_DEV_SERVER_URL, R = o.join(process.env.APP_ROOT, "dist-electron"), r = o.join(process.env.APP_ROOT, "dist");
-process.env.VITE_PUBLIC = i ? o.join(process.env.APP_ROOT, "public") : r;
-let e;
-function l() {
-  e = new s({
-    icon: o.join(process.env.VITE_PUBLIC, "logo.png"),
+import { ipcMain, desktopCapturer, app, BrowserWindow, session } from "electron";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+const state = {
+  screenShareSourceId: null
+};
+ipcMain.handle("set-desktop-capturer-source", (_, screenShareSourceId) => {
+  state.screenShareSourceId = screenShareSourceId;
+});
+ipcMain.handle("get-desktop-capturers", async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ["window", "screen"],
+    thumbnailSize: { width: 1280, height: 720 }
+  });
+  const sorted = sources.map((source) => ({
+    id: source.id,
+    name: source.name,
+    thumbnail: source.thumbnail.toDataURL()
+  })).sort((a, b) => a.name > b.name ? 1 : -1);
+  return {
+    window: sorted.filter(({ id }) => id.startsWith("window:")),
+    screen: sorted.filter(({ id }) => id.startsWith("screen:"))
+  };
+});
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+process.env.APP_ROOT = path.join(__dirname, "..");
+const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
+const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
+process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
+let win;
+function createWindow() {
+  win = new BrowserWindow({
+    icon: path.join(process.env.VITE_PUBLIC, "logo.png"),
     webPreferences: {
-      preload: o.join(t, "preload.mjs")
+      preload: path.join(__dirname, "preload.mjs")
     },
     width: 1920,
     height: 1080
-  }), e.webContents.on("did-finish-load", () => {
-    e == null || e.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
-  }), i ? e.loadURL(i) : e.loadFile(o.join(r, "index.html"));
+  });
+  win.webContents.on("did-finish-load", () => {
+    win == null ? void 0 : win.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+  });
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    desktopCapturer.getSources({ types: ["screen", "window"] }).then((sources) => {
+      const source = sources.find(
+        ({ id }) => id === state.screenShareSourceId
+      );
+      if (!source) {
+        throw new Error(`Source not found: ${state.screenShareSourceId}`);
+      }
+      callback({ video: source, audio: "loopback" });
+    });
+  });
+  if (VITE_DEV_SERVER_URL) {
+    win.loadURL(VITE_DEV_SERVER_URL);
+  } else {
+    win.loadFile(path.join(RENDERER_DIST, "index.html"));
+  }
 }
-n.on("window-all-closed", () => {
-  process.platform !== "darwin" && (n.quit(), e = null);
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+    win = null;
+  }
 });
-n.on("activate", () => {
-  s.getAllWindows().length === 0 && l();
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
 });
-n.whenReady().then(l);
+app.whenReady().then(createWindow);
 export {
-  R as MAIN_DIST,
-  r as RENDERER_DIST,
-  i as VITE_DEV_SERVER_URL
+  MAIN_DIST,
+  RENDERER_DIST,
+  VITE_DEV_SERVER_URL
 };
