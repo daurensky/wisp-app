@@ -161,11 +161,12 @@ export default function ConnectionControls({
     })
   }
 
-  const handleStopScreenShare = async () => {
-    await updateMutation.mutateAsync({
-      screen_sharing: false,
-    })
-  }
+  // TODO: Пока нормально не работает остановка демонстрации, поэтому отключаем юзера
+  // const handleStopScreenShare = async () => {
+  //   await updateMutation.mutateAsync({
+  //     screen_sharing: false,
+  //   })
+  // }
 
   const handleDisconnect = async () => {
     await disconnectMutation.mutateAsync()
@@ -227,10 +228,10 @@ export default function ConnectionControls({
         <div className="space-x-2">
           {isSharing ? (
             <Button
-              onClick={handleStopScreenShare}
+              onClick={handleDisconnect}
               variant="destructive"
               size="icon-lg"
-              aria-label="Демонстрация экрана"
+              aria-label="Остановить демонстрацию экрана"
               className="rounded-full"
             >
               <ScreenShareOff />
@@ -239,7 +240,7 @@ export default function ConnectionControls({
             <ScreenShareDialog onScreenShare={handleStartScreenShare}>
               <Button
                 size="icon-lg"
-                aria-label="Демонстрация экрана"
+                aria-label="Запустить демонстрацию экрана"
                 className="rounded-full"
               >
                 <ScreenShare />

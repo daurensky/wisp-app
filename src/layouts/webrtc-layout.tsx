@@ -68,7 +68,26 @@ export default function WebRTCLayout() {
   }) => {
     const pc = new RTCPeerConnection(servers)
 
-    stream.getTracks().forEach(track => pc.addTrack(track, stream))
+    stream.getTracks().forEach(track => {
+      const sender = pc.addTrack(track, stream)
+
+      if (track.kind === 'video') {
+        const codecs = RTCRtpSender.getCapabilities('video')?.codecs
+        const h264 = codecs?.filter(c => c.mimeType === 'video/H264')
+
+        if (h264?.length) {
+          pc.getTransceivers().forEach(transceiver => {
+            if (transceiver.sender.track === track) {
+              transceiver.setCodecPreferences(h264)
+            }
+          })
+        }
+
+        const params = sender.getParameters()
+        params.encodings = [{ maxBitrate: 4_000_000, maxFramerate: 60 }]
+        sender.setParameters(params)
+      }
+    })
 
     pc.onicecandidate = event => {
       if (event.candidate) {

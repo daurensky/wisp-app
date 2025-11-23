@@ -53,7 +53,7 @@ export default function Sidebar({ server }: { server: Server }) {
   )
 
   return (
-    <aside className="bg-sidebar rounded-sm w-[300px]">
+    <aside className="bg-sidebar rounded-sm w-[300px] shrink-0">
       <div className="p-3 border-b border-accent">
         <p>{server.name}</p>
       </div>

@@ -3,11 +3,13 @@ import type {
   Server as ServerResponse,
 } from '@/api/server'
 import { getServer } from '@/api/server'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWebRTC } from '@/context/webrtc-context'
 import { useEcho } from '@laravel/echo-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
+import { Maximize } from 'lucide-react'
+import { Fragment, useRef } from 'react'
 import { Outlet, useParams } from 'react-router'
 import Sidebar from './sidebar'
 
@@ -44,6 +46,16 @@ export default function Server() {
 
   const { remoteStreams: peers } = useWebRTC()
 
+  const playerRef = useRef<HTMLDivElement>(null)
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      playerRef.current?.requestFullscreen()
+    } else {
+      document.exitFullscreen()
+    }
+  }
+
   if (status === 'pending') {
     return (
       <>
@@ -77,26 +89,42 @@ export default function Server() {
     <>
       <Sidebar server={server} />
 
-      <main>
-        {Object.entries(peers).map(([userId, peerStreams]) => (
-          <div key={userId}>
-            {peerStreams.displayStream && (
-              <RemoteVideo stream={peerStreams.displayStream} />
-            )}
+      <main className="grow">
+        <div
+          ref={playerRef}
+          className="bg-sidebar rounded-sm w-full aspect-video flex items-center justify-center relative"
+        >
+          {Object.entries(peers).map(([userId, peerStreams]) => (
+            <Fragment key={userId}>
+              {peerStreams.displayStream && (
+                <video
+                  ref={el => {
+                    el &&
+                      peerStreams.displayStream &&
+                      (el.srcObject = peerStreams.displayStream)
+                  }}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-contain"
+                />
+              )}
+            </Fragment>
+          ))}
+
+          <div className="absolute bottom-0 w-full flex items-center px-4 py-8 opacity-0 hover:opacity-100 transition-opacity backdrop-blur-2xl">
+            <Button
+              onClick={toggleFullscreen}
+              variant="ghost"
+              aria-label="Полноэкранный режим"
+              className="rounded-full ml-auto"
+            >
+              <Maximize />
+              Полноэкранный режим
+            </Button>
           </div>
-        ))}
+        </div>
       </main>
     </>
   )
-}
-
-function RemoteVideo({ stream }: { stream: MediaStream | null }) {
-  const ref = useRef<HTMLVideoElement>(null)
-
-  useEffect(() => {
-    if (!ref.current || !stream) return
-    ref.current.srcObject = stream
-  }, [stream])
-
-  return <video ref={ref} autoPlay playsInline muted />
 }

@@ -63,6 +63,17 @@ function createWindow() {
     win.loadFile(path.join(RENDERER_DIST, "index.html"));
   }
 }
+app.commandLine.appendSwitch(
+  "enable-features",
+  [
+    "WebRTCHWEncoding",
+    "WebRTCHWH264Encoding",
+    "VaapiVideoEncoder",
+    "VaapiVideoDecoder",
+    "RTCVideoEncoderNVENC"
+  ].join(",")
+);
+app.commandLine.appendSwitch("force_high_performance_gpu");
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
