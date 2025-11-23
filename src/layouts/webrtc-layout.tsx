@@ -1,10 +1,11 @@
 import {
   OnIceCandidate,
-  PeerStreams,
+  RemoteStream,
+  WebRTCConnection,
   WebRTCContext,
   WebRTCContextValue,
 } from '@/context/webrtc-context'
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Outlet } from 'react-router'
 
 const servers = {
@@ -17,11 +18,15 @@ const servers = {
 }
 
 export default function WebRTCLayout() {
+  const [connection, setConnection] = useState<WebRTCConnection | null>(null)
+
   const peerConnections = useRef<Record<string, RTCPeerConnection>>({})
 
   const localStream = useRef<MediaStream | null>(null)
 
-  const [peers, setPeers] = useState<Record<string, PeerStreams>>({})
+  const [remoteStreams, setRemoteStreams] = useState<
+    Record<string, RemoteStream>
+  >({})
 
   const pendingIceCandidates = useRef<Record<string, RTCIceCandidateInit[]>>({})
 
@@ -30,7 +35,7 @@ export default function WebRTCLayout() {
 
   const displaySenders = useRef<Record<string, RTCRtpSender[]>>({})
 
-  const initLocalStream = useCallback(async () => {
+  const initLocalStream = async () => {
     if (localStream.current) {
       return localStream.current
     }
@@ -43,205 +48,191 @@ export default function WebRTCLayout() {
     localStream.current = stream
 
     return stream
-  }, [])
+  }
 
-  const stopLocalStream = useCallback(() => {
+  const stopLocalStream = () => {
     if (!localStream.current) return
 
     localStream.current.getTracks().forEach(track => track.stop())
     localStream.current = null
-  }, [])
+  }
 
-  const createPeerConnection = useCallback(
-    ({
-      remoteUserId,
+  const createPeerConnection = ({
+    remoteUserId,
+    stream,
+    onIceCandidate,
+  }: {
+    remoteUserId: string
+    stream: MediaStream
+    onIceCandidate: OnIceCandidate
+  }) => {
+    const pc = new RTCPeerConnection(servers)
+
+    stream.getTracks().forEach(track => pc.addTrack(track, stream))
+
+    pc.onicecandidate = event => {
+      if (event.candidate) {
+        onIceCandidate(event.candidate)
+      }
+    }
+
+    pc.ontrack = event => {
+      const remoteStream = event.streams[0]
+      const hasVideoStream = remoteStream.getVideoTracks().length > 0
+      const isDisplayStream = hasVideoStream
+
+      setRemoteStreams(prev => {
+        const currentStreams = prev[remoteUserId] || {
+          mainStream: null,
+          displayStream: null,
+        }
+
+        let newStreamData: RemoteStream
+
+        if (isDisplayStream) {
+          newStreamData = {
+            ...currentStreams,
+            displayStream: remoteStream,
+          }
+        } else {
+          newStreamData = {
+            ...currentStreams,
+            mainStream: remoteStream,
+          }
+        }
+
+        return {
+          ...prev,
+          [remoteUserId]: newStreamData,
+        }
+      })
+    }
+
+    peerConnections.current[remoteUserId] = pc
+
+    return pc
+  }
+
+  const createOffer: WebRTCContextValue['createOffer'] = async ({
+    remoteUserId,
+    onIceCandidate,
+  }) => {
+    const stream = await initLocalStream()
+
+    const pc = createPeerConnection({ remoteUserId, stream, onIceCandidate })
+
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+
+    return offer
+  }
+
+  const handleOffer: WebRTCContextValue['handleOffer'] = async ({
+    from,
+    sdp,
+    onIceCandidate,
+  }) => {
+    const stream = await initLocalStream()
+
+    const pc = createPeerConnection({
+      remoteUserId: from,
       stream,
       onIceCandidate,
-    }: {
-      remoteUserId: string
-      stream: MediaStream
-      onIceCandidate: OnIceCandidate
-    }) => {
-      const pc = new RTCPeerConnection(servers)
+    })
 
-      stream.getTracks().forEach(track => pc.addTrack(track, stream))
+    await pc.setRemoteDescription(
+      new RTCSessionDescription({ type: 'offer', sdp })
+    )
 
-      pc.onicecandidate = event => {
-        if (event.candidate) {
-          onIceCandidate(event.candidate)
-        }
-      }
-
-      pc.ontrack = event => {
-        const remoteStream = event.streams[0]
-        const hasVideoStream = remoteStream.getVideoTracks().length > 0
-        const isDisplayStream = hasVideoStream
-
-        setPeers(prev => {
-          const currentStreams = prev[remoteUserId] || {
-            mainStream: null,
-            displayStream: null,
-          }
-
-          let newStreamData: PeerStreams
-
-          if (isDisplayStream) {
-            newStreamData = {
-              ...currentStreams,
-              displayStream: remoteStream,
-            }
-          } else {
-            newStreamData = {
-              ...currentStreams,
-              mainStream: remoteStream,
-            }
-          }
-
-          return {
-            ...prev,
-            [remoteUserId]: newStreamData,
-          }
-        })
-      }
-
-      peerConnections.current[remoteUserId] = pc
-
-      return pc
-    },
-    []
-  )
-
-  const createOffer = useCallback<WebRTCContextValue['createOffer']>(
-    async ({ remoteUserId, onIceCandidate }) => {
-      const stream = await initLocalStream()
-
-      const pc = createPeerConnection({ remoteUserId, stream, onIceCandidate })
-
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-
-      return offer
-    },
-    [createPeerConnection, initLocalStream]
-  )
-
-  const handleOffer = useCallback<WebRTCContextValue['handleOffer']>(
-    async ({ from, sdp, onIceCandidate }) => {
-      const stream = await initLocalStream()
-
-      const pc = createPeerConnection({
-        remoteUserId: from,
-        stream,
-        onIceCandidate,
+    if (pendingIceCandidates.current[from]) {
+      pendingIceCandidates.current[from].forEach(candidate => {
+        pc.addIceCandidate(new RTCIceCandidate(candidate))
       })
 
-      await pc.setRemoteDescription(
-        new RTCSessionDescription({ type: 'offer', sdp })
-      )
+      pendingIceCandidates.current[from] = []
+    }
 
-      if (pendingIceCandidates.current[from]) {
-        pendingIceCandidates.current[from].forEach(candidate => {
-          pc.addIceCandidate(new RTCIceCandidate(candidate))
-        })
+    const answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
 
-        pendingIceCandidates.current[from] = []
-      }
+    return answer
+  }
 
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
+  const handleAnswer: WebRTCContextValue['handleAnswer'] = async ({
+    from,
+    sdp,
+  }) => {
+    const pc = peerConnections.current[from]
 
-      return answer
-    },
-    [createPeerConnection, initLocalStream, pendingIceCandidates]
-  )
+    if (!pc) {
+      throw new Error('User not connected or PC not initialized')
+    }
 
-  const handleAnswer = useCallback<WebRTCContextValue['handleAnswer']>(
-    async ({ from, sdp }) => {
-      const pc = peerConnections.current[from]
+    if (pc.signalingState !== 'have-local-offer') {
+      console.warn(`Unexpected signaling state: ${pc.signalingState}`)
+      return
+    }
 
-      if (!pc) {
-        throw new Error('User not connected or PC not initialized')
-      }
+    await pc.setRemoteDescription(
+      new RTCSessionDescription({ type: 'answer', sdp })
+    )
 
-      if (pc.signalingState !== 'have-local-offer') {
-        console.warn(`Unexpected signaling state: ${pc.signalingState}`)
-        // В реальном приложении здесь может потребоваться пересоздание Offer/PC
-        return
-      }
-
-      await pc.setRemoteDescription(
-        new RTCSessionDescription({ type: 'answer', sdp })
-      )
-
-      if (pendingIceCandidates.current[from]) {
-        pendingIceCandidates.current[from].forEach(candidate => {
-          pc.addIceCandidate(new RTCIceCandidate(candidate))
-        })
-
-        pendingIceCandidates.current[from] = []
-      }
-    },
-    [pendingIceCandidates]
-  )
-
-  const handleCandidate = useCallback<WebRTCContextValue['handleCandidate']>(
-    async ({ from, candidate }) => {
-      const pc = peerConnections.current[from]
-
-      if (!pc) {
-        return
-      }
-
-      if (!pc.remoteDescription) {
-        if (!pendingIceCandidates.current[from]) {
-          pendingIceCandidates.current[from] = []
-        }
-        pendingIceCandidates.current[from].push(candidate)
-
-        return
-      }
-
-      await pc.addIceCandidate(new RTCIceCandidate(candidate))
-    },
-    []
-  )
-
-  const removePeer = useCallback<WebRTCContextValue['removePeer']>(
-    ({ remoteUserId }) => {
-      const pc = peerConnections.current[remoteUserId]
-
-      if (!pc) {
-        throw new Error(`User not connected ${remoteUserId}`)
-      }
-
-      pc.ontrack = null
-      pc.onicecandidate = null
-      pc.onconnectionstatechange = null
-
-      pc.close()
-
-      delete peerConnections.current[remoteUserId]
-      setPeers(prev => {
-        const copy = { ...prev }
-        delete copy[remoteUserId]
-        return copy
+    if (pendingIceCandidates.current[from]) {
+      pendingIceCandidates.current[from].forEach(candidate => {
+        pc.addIceCandidate(new RTCIceCandidate(candidate))
       })
-    },
-    []
-  )
 
-  const validatePeers = useCallback<WebRTCContextValue['validatePeers']>(
-    ({ connectedUserIds }) => {
-      for (const userId in peerConnections.current) {
-        if (!connectedUserIds.has(userId)) {
-          removePeer({ remoteUserId: userId })
-        }
+      pendingIceCandidates.current[from] = []
+    }
+  }
+
+  const handleCandidate: WebRTCContextValue['handleCandidate'] = async ({
+    from,
+    candidate,
+  }) => {
+    const pc = peerConnections.current[from]
+
+    if (!pc) {
+      return
+    }
+
+    if (!pc.remoteDescription) {
+      if (!pendingIceCandidates.current[from]) {
+        pendingIceCandidates.current[from] = []
       }
-    },
-    [removePeer]
-  )
+      pendingIceCandidates.current[from].push(candidate)
 
-  const closeAll = useCallback<WebRTCContextValue['closeAll']>(() => {
+      return
+    }
+
+    await pc.addIceCandidate(new RTCIceCandidate(candidate))
+  }
+
+  const removePeer: WebRTCContextValue['removePeer'] = ({ remoteUserId }) => {
+    const pc = peerConnections.current[remoteUserId]
+
+    if (!pc) {
+      console.warn(`User not connected ${remoteUserId}`)
+      return
+    }
+
+    pc.ontrack = null
+    pc.onicecandidate = null
+    pc.onconnectionstatechange = null
+
+    pc.close()
+
+    delete peerConnections.current[remoteUserId]
+    setRemoteStreams(prev => {
+      const copy = { ...prev }
+      delete copy[remoteUserId]
+      return copy
+    })
+  }
+
+  const closeAll: WebRTCContextValue['closeAll'] = () => {
+    if (!connection) return
+
     Object.values(peerConnections.current).forEach(pc => {
       pc.ontrack = null
       pc.onicecandidate = null
@@ -253,14 +244,23 @@ export default function WebRTCLayout() {
     })
 
     peerConnections.current = {}
-    setPeers({})
+    setRemoteStreams({})
 
     stopLocalStream()
-  }, [stopLocalStream])
 
-  const getPeersPing = useCallback<
-    WebRTCContextValue['getPeersPing']
-  >(async () => {
+    if (localDisplayStream) {
+      localDisplayStream.getTracks().forEach(track => track.stop())
+      setLocalDescription(null)
+    }
+
+    displaySenders.current = {}
+
+    connection.onClose()
+
+    setConnection(null)
+  }
+
+  const getPeersPing: WebRTCContextValue['getPeersPing'] = async () => {
     const ping: Record<string, number> = {}
 
     for (const userId in peerConnections.current) {
@@ -283,9 +283,9 @@ export default function WebRTCLayout() {
     }
 
     return ping
-  }, [])
+  }
 
-  const initLocalDisplayStream = useCallback(async () => {
+  const initLocalDisplayStream = async () => {
     if (localDisplayStream) {
       return localDisplayStream
     }
@@ -298,16 +298,20 @@ export default function WebRTCLayout() {
     setLocalDescription(stream)
 
     return stream
-  }, [localDisplayStream])
+  }
 
-  const startScreenShare = useCallback<
-    WebRTCContextValue['startScreenShare']
-  >(async () => {
+  const startScreenShare: WebRTCContextValue['startScreenShare'] = async () => {
+    if (!connection) return
+
     const screenStream = await initLocalDisplayStream()
 
     const offers: Record<string, RTCSessionDescriptionInit> = {}
 
     for (const [remoteUserId, pc] of Object.entries(peerConnections.current)) {
+      if (displaySenders.current[remoteUserId]?.length > 0) {
+        continue
+      }
+
       const currentSenders: RTCRtpSender[] = []
 
       screenStream.getTracks().forEach(track => {
@@ -322,18 +326,16 @@ export default function WebRTCLayout() {
 
       offers[remoteUserId] = offer
 
-      // screenStream.getVideoTracks()[0].onended = () => {
-      //   stopScreenShare()
-      // }
+      screenStream.getVideoTracks()[0].onended = () => {
+        stopScreenShare()
+      }
     }
 
-    return offers
-  }, [initLocalDisplayStream])
+    connection.onRenegotiation(offers)
+  }
 
-  const stopScreenShare = useCallback<
-    WebRTCContextValue['stopScreenShare']
-  >(async () => {
-    if (!localDisplayStream) return {}
+  const stopScreenShare: WebRTCContextValue['stopScreenShare'] = async () => {
+    if (!connection || !localDisplayStream) return
 
     localDisplayStream.getTracks().forEach(track => track.stop())
     setLocalDescription(null)
@@ -354,21 +356,23 @@ export default function WebRTCLayout() {
       offers[remoteUserId] = offer
     }
 
-    return offers
-  }, [localDisplayStream])
+    connection.onRenegotiation(offers)
+  }
 
   return (
     <WebRTCContext.Provider
       value={{
+        connection,
+        initConnection: setConnection,
+
         localStream,
-        peers,
+        remoteStreams,
         initLocalStream,
         createOffer,
         handleOffer,
         handleAnswer,
         handleCandidate,
         removePeer,
-        validatePeers,
         closeAll,
         getPeersPing,
 

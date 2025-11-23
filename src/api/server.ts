@@ -1,6 +1,7 @@
 import api from '@/lib/api'
 import { User } from './user'
 import { ServerChannel } from './server-channel'
+import { PeerConnection } from './peer-connection'
 
 export interface ServerCategory {
   id: string
@@ -14,6 +15,7 @@ export interface Server {
   avatar: string
   author: User
   categories: ServerCategory[]
+  peers: PeerConnection[]
 }
 
 export async function createServer({

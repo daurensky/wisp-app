@@ -1,17 +1,29 @@
-import { createContext, MutableRefObject, useContext } from 'react'
+import { createContext, RefObject, useContext } from 'react'
 
 type UserId = string
 
 export type OnIceCandidate = (candidate: RTCIceCandidateInit) => void
 
-export interface PeerStreams {
+export interface RemoteStream {
   mainStream: MediaStream | null
   displayStream: MediaStream | null
 }
 
+export interface WebRTCConnection {
+  label: string
+  connectableType: string
+  connectableId: string
+  onClose: () => void
+  onRenegotiation: (offers: Record<UserId, RTCSessionDescriptionInit>) => void
+}
+
 export interface WebRTCContextValue {
-  localStream: MutableRefObject<MediaStream | null>
-  peers: Record<UserId, PeerStreams>
+  connection: WebRTCConnection | null
+
+  initConnection: (args: WebRTCConnection) => void
+
+  localStream: RefObject<MediaStream | null>
+  remoteStreams: Record<UserId, RemoteStream>
 
   initLocalStream: () => Promise<MediaStream>
 
@@ -35,17 +47,15 @@ export interface WebRTCContextValue {
 
   removePeer: (args: { remoteUserId: UserId }) => void
 
-  validatePeers: (args: { connectedUserIds: Set<UserId> }) => void
-
   closeAll: () => void
 
   getPeersPing: () => Promise<Record<UserId, number>>
 
   localDisplayStream: MediaStream | null
 
-  startScreenShare: () => Promise<Record<UserId, RTCSessionDescriptionInit>>
+  startScreenShare: () => Promise<void>
 
-  stopScreenShare: () => Promise<Record<UserId, RTCSessionDescriptionInit>>
+  stopScreenShare: () => Promise<void>
 }
 
 export const WebRTCContext = createContext<WebRTCContextValue | null>(null)

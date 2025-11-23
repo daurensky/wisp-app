@@ -2,7 +2,7 @@ import api from '@/lib/api'
 
 export interface User {
   id: string
-  name: string | null
+  name: string
   username: string
   email: string
   avatar: string
