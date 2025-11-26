@@ -3,17 +3,21 @@ import {
   updatePeerConnection,
 } from '@/api/peer-connection'
 import { Server } from '@/api/server'
+import { ScreenShareDialog } from '@/components/screen-share-dialog'
+import { Button } from '@/components/ui/button'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { useAuth } from '@/context/auth-context'
 import { useWebRTC, WebRTCConnection } from '@/context/webrtc-context'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PhoneOff, ScreenShare, ScreenShareOff } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { ScreenShareDialog } from '../screen-share-dialog'
-import { Button } from '../ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 
-export default function ConnectionControls({
+export default function UserMenuConnection({
   connection,
 }: {
   connection: WebRTCConnection

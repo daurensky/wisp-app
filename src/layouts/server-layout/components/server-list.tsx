@@ -1,13 +1,13 @@
 import { listServers } from '@/api/server'
 import logo from '@/assets/logo.png'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { NavLink } from 'react-router'
 import { toast } from 'sonner'
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
-import { Skeleton } from '../ui/skeleton'
-import NewServerDialog from './new-server-dialog'
+import CreateServerDialog from './create-server-dialog'
 
 export default function ServerList() {
   const {
@@ -71,7 +71,7 @@ export default function ServerList() {
         ))}
 
         <div className="px-3">
-          <NewServerDialog />
+          <CreateServerDialog />
         </div>
       </div>
     </aside>

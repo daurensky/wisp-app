@@ -1,7 +1,5 @@
-import { useForm } from '@tanstack/react-form'
-import { Plus } from 'lucide-react'
-import z from 'zod'
-import { Button } from '../ui/button'
+import { createServer, Server } from '@/api/server'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogClose,
@@ -11,14 +9,21 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '../ui/dialog'
-import { Field, FieldError, FieldGroup, FieldLabel } from '../ui/field'
-import { Input } from '../ui/input'
-import { createServer, Server } from '@/api/server'
-import { toast } from 'sonner'
-import { useEffect, useState } from 'react'
+} from '@/components/ui/dialog'
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { useForm } from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { toast } from 'sonner'
+import z from 'zod'
 
 const formSchema = z.object({
   name: z
@@ -36,7 +41,7 @@ const formSchema = z.object({
     .nullable(),
 })
 
-export default function NewServerDialog() {
+export default function CreateServerDialog() {
   const [isOpen, setIsOpen] = useState(false)
   const navigate = useNavigate()
 
