@@ -166,16 +166,15 @@ export default function UserMenuConnection({
   }
 
   // TODO: Пока нормально не работает остановка демонстрации, поэтому отключаем юзера
-  // const handleStopScreenShare = async () => {
-  //   await updateMutation.mutateAsync({
-  //     screen_sharing: false,
-  //   })
-  // }
+  const handleStopScreenShare = async () => {
+    await updateMutation.mutateAsync({
+      screen_sharing: false,
+    })
+  }
 
   const handleDisconnect = async () => {
-    await disconnectMutation.mutateAsync()
-
     closeAll()
+    await disconnectMutation.mutateAsync()
   }
 
   return (
@@ -232,33 +231,32 @@ export default function UserMenuConnection({
         <div className="space-x-2">
           {isSharing ? (
             <Button
-              onClick={handleDisconnect}
+              onClick={handleStopScreenShare}
               variant="destructive"
-              size="icon-lg"
+              size="icon"
               aria-label="Остановить демонстрацию экрана"
-              className="rounded-full"
             >
-              <ScreenShareOff />
+              <ScreenShareOff className="size-5" />
             </Button>
           ) : (
             <ScreenShareDialog onScreenShare={handleStartScreenShare}>
               <Button
-                size="icon-lg"
+                variant="subtle"
+                size="icon"
                 aria-label="Запустить демонстрацию экрана"
-                className="rounded-full"
               >
-                <ScreenShare />
+                <ScreenShare className="size-5" />
               </Button>
             </ScreenShareDialog>
           )}
 
           <Button
             onClick={handleDisconnect}
-            size="icon-lg"
+            variant="subtle"
+            size="icon"
             aria-label="Отключиться"
-            className="rounded-full"
           >
-            <PhoneOff />
+            <PhoneOff className="size-5" />
           </Button>
         </div>
       </div>
